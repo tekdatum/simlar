@@ -1,0 +1,110 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simlar"
+version = "1.0.0"
+description = "High-performance similarity search — open-source Python wrapper"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Development Status :: 4 - Beta",
+]
+authors = [
+    {name = "TekDatum", email = "hello@tekdatum.com"},
+]
+
+# simlar-engine is the proprietary binary; install from the private index first.
+# See installation.md for instructions.
+dependencies = [
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+langchain   = ["langchain-core>=0.2"]
+haystack    = ["haystack-ai>=2.0"]
+llama_index = ["llama-index-core>=0.10"]
+dev = [
+    "pytest>=8.0",
+    "numpy>=1.24",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[tool.setuptools.packages.find]
+where   = ["src"]
+include = ["simlar*"]
+exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+"simlar"              = ["py.typed"]
+"simlar.fusion"       = ["*.pyi"]
+"simlar.indexes"      = ["*.pyi"]
+"simlar.integrations" = []
+
+[tool.setuptools.exclude-package-data]
+"*" = ["*.c", "*.html", "*.pyx", "*.pxd", "*.so"]
+
+[project.urls]
+Homepage        = "https://tekdatum.com/products/"
+Source          = "https://github.com/tekdatum/simlar"
+Documentation   = "https://github.com/tekdatum/simlar/blob/main/docs/index.md"
+"Issue Tracker" = "https://github.com/tekdatum/simlar/issues"
+Changelog       = "https://github.com/tekdatum/simlar/blob/main/CHANGELOG.md"
+
+# ── Ruff ─────────────────────────────────────────────────────────────────────
+
+[tool.ruff]
+line-length    = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style  = "double"
+indent-style = "space"
+
+# ── Pytest ────────────────────────────────────────────────────────────────────
+
+[tool.pytest.ini_options]
+testpaths  = ["tests"]
+pythonpath = ["src"]
+addopts    = "-ra -q"
+
+# ── Mypy ─────────────────────────────────────────────────────────────────────
+
+[tool.mypy]
+exclude = "^simlar/benchmark/.*$"
+
+[[tool.mypy.overrides]]
+module = ["simlar_engine", "simlar_engine.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["numba", "numba.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["nltk", "nltk.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["haystack", "haystack.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["langchain_core", "langchain_core.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["llama_index", "llama_index.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["fsspec", "fsspec.*"]
+ignore_missing_imports = true
