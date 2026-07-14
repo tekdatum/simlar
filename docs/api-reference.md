@@ -59,9 +59,9 @@ class RelevanceIndex:
 from simlar import RelevanceIndex
 
 idx = RelevanceIndex()
-idx.add(ids=["a", "b"], texts=["hello world", "foo bar baz"])
+idx.add(ids=["a", "b", "c"], texts=["hello world", "foo bar baz", "quick brown fox"])
 
-results = idx.search("hello", k=5)
+results = idx.search("hello", k=2)
 # results[0].id == "a"
 ```
 
@@ -112,10 +112,11 @@ class HelixIndex:
     def __init__(
         self,
         *,
-        indexes: list,
+        text_index: TextIndex | None = None,
+        vector_index: VectorIndex | None = None,
         fusion: ReciprocalRankFusion | None = None,
-        text_k: int = 5000,
-        vector_k: int = 1000,
+        text_k: int | None = None,
+        vector_k: int | None = None,
         top_k: int = 100,
         alpha_text: float = 0.10,
         alpha_vector: float = 1.0,
@@ -150,7 +151,8 @@ class HelixIndex:
 from simlar import HelixIndex, RelevanceIndex, SimlarEngine, ReciprocalRankFusion
 
 index = HelixIndex(
-    indexes=[RelevanceIndex(), SimlarEngine()],
+    text_index=RelevanceIndex(),
+    vector_index=SimlarEngine(),
     fusion=ReciprocalRankFusion(),
     top_k=20,
 )

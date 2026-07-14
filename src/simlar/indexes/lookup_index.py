@@ -72,3 +72,7 @@ class LookupIndex(TextIndex):
     @property
     def index_type(self) -> str:
         return self._core.index_type
+
+    @property
+    def ids(self) -> list[str]:
+        return self._core.ids

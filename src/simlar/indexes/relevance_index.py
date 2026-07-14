@@ -82,3 +82,7 @@ class RelevanceIndex(TextIndex):
     @property
     def index_type(self) -> str:
         return "relevance"
+
+    @property
+    def ids(self) -> list[str]:
+        return self._core.ids

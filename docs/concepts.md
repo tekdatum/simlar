@@ -15,6 +15,24 @@ There are two ways to add documents to an index:
 
 Both methods accept raw text or pre-computed vectors.
 
+```python
+from simlar import RelevanceIndex
+
+# fit(corpus): documents get auto-assigned string ids "0", "1", "2", ...
+idx = RelevanceIndex()
+idx.fit(["hello world", "foo bar baz"])
+results = idx.search("hello", k=1)
+results[0].id  # "0"
+
+# add(ids, corpus): documents are mapped to the ids you provide
+idx = RelevanceIndex()
+idx.add(ids=["a", "b"], texts=["hello world", "foo bar baz"])
+results = idx.search("hello", k=1)
+results[0].id  # "a"
+```
+
+`fit()` and `add()` apply to `RelevanceIndex`, `SimlarEngine`, and `HelixIndex`. `StreamingHybridIndex` does not have either method — see [below](#streaminghybridindex--hybrid-search-at-scale) for how it ingests documents.
+
 ## Indexes
 
 simlar ships four index types. Pick the one that matches your data and scale.
@@ -48,9 +66,11 @@ Combines keyword relevance and semantic similarity into a single ranked result. 
 
 ### StreamingHybridIndex — hybrid search at scale
 
-The same hybrid approach as HelixIndex, but designed for corpora too large to fit in memory at once. Documents are added in batches; each batch is stored as an independent shard. At query time all shards are searched and the results are merged globally.
+The same hybrid approach as HelixIndex, but designed for corpora too large to fit in memory at once. Documents are added in batches via `add_batch(corpus, vectors, parallel=False)`; each batch is stored as an independent shard. At query time all shards are searched and the results are merged globally.
 
 **Use when:** you are ingesting millions of documents in a streaming fashion, or when your corpus would exhaust available RAM with a standard index.
+
+**Note:** unlike the other indexes, `StreamingHybridIndex` does not have `fit()` or `add()` — use `add_batch()` instead.
 
 ---
 
