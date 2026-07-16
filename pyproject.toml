@@ -20,7 +20,7 @@ authors = [
 # simlar-engine is the proprietary binary; install from the private index first.
 # See installation.md for instructions.
 dependencies = [
-    "numpy>=1.24",
+    "numpy>=1.24,<2.5",
 ]
 
 [project.optional-dependencies]
@@ -29,7 +29,7 @@ haystack    = ["haystack-ai>=2.0"]
 llama_index = ["llama-index-core>=0.10"]
 dev = [
     "pytest>=8.0",
-    "numpy>=1.24",
+    "numpy>=1.24,<2.5",
     "ruff>=0.4",
     "mypy>=1.10",
 ]
