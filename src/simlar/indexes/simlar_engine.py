@@ -107,3 +107,7 @@ class SimlarEngine(VectorIndex):
     def _matrix(self) -> np.ndarray | None:
 
         return self._core._matrix
+
+    @property
+    def ids(self) -> list[str]:
+        return self._core.ids
