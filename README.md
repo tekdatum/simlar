@@ -35,7 +35,7 @@ ids = [f"doc_{i}" for i in range(len(corpus))]
 idx = RelevanceIndex()
 idx.add(ids=ids, texts=corpus)
 
-results = idx.search("immunotherapy clinical trial", k=5)
+results = idx.search("immunotherapy clinical trial", k=1)
 for r in results:
     print(r.rank, r.id, f"{r.score:.4f}")
 ```
