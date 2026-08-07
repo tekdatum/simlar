@@ -31,27 +31,18 @@ class SimlarEngine(VectorIndex):
         params: _Parameters | None = None,
         **kwargs,
     ) -> None:
-
         self._core.fit(embeddings, parallel, params)
 
-    def add(
-        self, ids: list[str], vectors: np.ndarray, parallel: bool = True
-    ) -> None:
-
+    def add(self, ids: list[str], vectors: np.ndarray, parallel: bool = True) -> None:
         self._core.add(ids, vectors, parallel)
 
     def update(self, ids: list[str], vectors: np.ndarray) -> None:
-
         self._core.update(ids, vectors)
 
     def delete(self, ids: list[str]) -> None:
-
         self._core.delete(ids)
 
-    def search(
-        self, query: np.ndarray, k: int = 10, parallel: bool = True
-    ) -> list[SearchResult]:
-
+    def search(self, query: np.ndarray, k: int = 10, parallel: bool = True) -> list[SearchResult]:
         return self._core.search(query, k, parallel)
 
     def search_raw(
@@ -62,7 +53,6 @@ class SimlarEngine(VectorIndex):
         parallel: bool = True,
         n_candidates: int | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
-
         return self._core.search_raw(vectors, k, candidates, parallel, n_candidates)
 
     def save(self, directory: str) -> None:
@@ -94,7 +84,6 @@ class SimlarEngine(VectorIndex):
 
     @property
     def _params(self) -> _Parameters | None:
-
         return self._core._params
 
     @property
@@ -109,7 +98,6 @@ class SimlarEngine(VectorIndex):
 
     @property
     def _matrix(self) -> np.ndarray | None:
-
         return self._core._matrix
 
     @property

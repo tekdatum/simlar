@@ -30,9 +30,7 @@ class LookupIndex(TextIndex):
     def fit(self, corpus: list[str], parallel: bool = True, **kwargs: object) -> None:
         self._core.fit(corpus, parallel)
 
-    def add(
-        self, ids: list[str], texts: list[str], parallel: bool = True
-    ) -> None:
+    def add(self, ids: list[str], texts: list[str], parallel: bool = True) -> None:
         self._core.add(ids, texts, parallel)
 
     def update(self, ids: list[str], texts: list[str]) -> None:
@@ -41,9 +39,7 @@ class LookupIndex(TextIndex):
     def delete(self, ids: list[str]) -> None:
         self._core.delete(ids)
 
-    def search(
-        self, query: str, k: int = 10, parallel: bool = True
-    ) -> list[SearchResult]:
+    def search(self, query: str, k: int = 10, parallel: bool = True) -> list[SearchResult]:
         return self._core.search(query, k, parallel)
 
     def search_raw(

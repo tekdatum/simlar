@@ -119,6 +119,10 @@ class HelixIndex(CompositeIndex):
     def vector_index(self) -> VectorIndex:
         return self._core.vector_index
 
+    @property
+    def ids(self) -> list[str]:
+        return self.text_index.ids
+
     def __repr__(self) -> str:
         return (
             f"HelixIndex(text={self._core.text_index.index_type!r}, "

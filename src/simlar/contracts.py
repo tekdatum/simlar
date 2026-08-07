@@ -49,7 +49,6 @@ class Index(ABC):
     def ids(self) -> list[str]: ...
 
 
-
 # ── Text index ────────────────────────────────────────────────────────────────
 
 
@@ -59,9 +58,7 @@ class TextIndex(Index):
     # ── Public API ─────────────────────────────────────────────────────────────
 
     @abstractmethod
-    def add(
-        self, ids: list[str], texts: list[str], parallel: bool = False
-    ) -> None:
+    def add(self, ids: list[str], texts: list[str], parallel: bool = False) -> None:
         """Append new documents. Raises ValueError on duplicate IDs; use update() to replace.
 
         `parallel` is accepted for parity with the vector side; text indexing
@@ -77,9 +74,7 @@ class TextIndex(Index):
         """Remove documents by ID, rebuilding internal structures."""
 
     @abstractmethod
-    def search(
-        self, query: str, k: int, parallel: bool = False
-    ) -> list[SearchResult]:
+    def search(self, query: str, k: int, parallel: bool = False) -> list[SearchResult]:
         """Rank documents against query. `parallel` threads a batch of queries."""
 
     # ── Internal ───────────────────────────────────────────────────────────────
@@ -109,15 +104,11 @@ class VectorIndex(Index):
     # ── Public API ─────────────────────────────────────────────────────────────
 
     @abstractmethod
-    def add(
-        self, ids: list[str], vectors: np.ndarray, parallel: bool = False
-    ) -> None:
+    def add(self, ids: list[str], vectors: np.ndarray, parallel: bool = False) -> None:
         """Append new vectors. `parallel` threads their quantization."""
 
     @abstractmethod
-    def search(
-        self, query: np.ndarray, k: int, parallel: bool = False
-    ) -> list[SearchResult]:
+    def search(self, query: np.ndarray, k: int, parallel: bool = False) -> list[SearchResult]:
         """Rank documents against query. `parallel` threads a batch of queries."""
 
     @abstractmethod
@@ -194,8 +185,6 @@ class CompositeIndex(Index):
 
 @runtime_checkable
 class FusionStrategy(Protocol):
-
-
     def __call__(
         self,
         results: list[tuple[np.ndarray, np.ndarray]],

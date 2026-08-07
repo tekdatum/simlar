@@ -99,9 +99,7 @@ class SimlarDocumentStore:
         vectors = np.array([d.embedding for d in to_write], dtype=np.float32)
 
         base_pos = len(self._corpus)
-        self._index.add_batch(
-            texts, vectors, self._parallel if parallel is None else parallel
-        )
+        self._index.add_batch(texts, vectors, self._parallel if parallel is None else parallel)
         self._corpus.extend(texts)
         self._haystack_docs.extend(to_write)
         for i, doc in enumerate(to_write):
