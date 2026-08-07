@@ -53,15 +53,16 @@ class HelixIndex(CompositeIndex):
         ids: list[str],
         texts: list[str] | None = None,
         vectors: np.ndarray | None = None,
+        parallel: bool = True,
     ) -> None:
-        self._core.add(ids, texts, vectors)
+        self._core.add(ids, texts, vectors, parallel)
 
     def search(
         self,
         query_text: str | list[str] | None = None,
         query_vector: np.ndarray | None = None,
         k: int | None = None,
-        parallel: bool = False,
+        parallel: bool = True,
     ) -> list[SearchResult] | list[list[SearchResult]]:
         return self._core.search(query_text, query_vector, k, parallel)
 
@@ -69,7 +70,7 @@ class HelixIndex(CompositeIndex):
         self,
         corpus: list,
         vectors: np.ndarray,
-        parallel: bool = False,
+        parallel: bool = True,
         **kwargs,
     ) -> None:
         params = kwargs.pop("params", None)

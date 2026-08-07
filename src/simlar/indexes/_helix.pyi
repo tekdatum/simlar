@@ -53,6 +53,7 @@ class HelixIndex(CompositeIndex):
         ids: list[str],
         texts: list[str] | None = None,
         vectors: np.ndarray | None = None,
+        parallel: bool = False,
     ) -> None: ...
     def search(
         self,

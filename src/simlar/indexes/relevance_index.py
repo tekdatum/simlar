@@ -30,13 +30,15 @@ class RelevanceIndex(TextIndex):
 
     # ── Public contract ───────────────────────────────────────────────────────
 
-    def fit(self, corpus: list[str], parallel: bool = False, **kwargs: object) -> None:
+    def fit(self, corpus: list[str], parallel: bool = True, **kwargs: object) -> None:
 
         self._core.fit(corpus, parallel)
 
-    def add(self, ids: list[str], texts: list[str]) -> None:
+    def add(
+        self, ids: list[str], texts: list[str], parallel: bool = True
+    ) -> None:
 
-        self._core.add(ids, texts)
+        self._core.add(ids, texts, parallel)
 
     def update(self, ids: list[str], texts: list[str]) -> None:
         self._core.update(ids, texts)
@@ -44,9 +46,11 @@ class RelevanceIndex(TextIndex):
     def delete(self, ids: list[str]) -> None:
         self._core.delete(ids)
 
-    def search(self, query: str, k: int = 10) -> list[SearchResult]:
+    def search(
+        self, query: str, k: int = 10, parallel: bool = True
+    ) -> list[SearchResult]:
 
-        return self._core.search(query, k)
+        return self._core.search(query, k, parallel)
 
     def search_raw(
         self,

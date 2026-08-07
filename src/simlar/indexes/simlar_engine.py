@@ -27,16 +27,18 @@ class SimlarEngine(VectorIndex):
     def fit(
         self,
         embeddings: np.ndarray,
-        parallel: bool = False,
+        parallel: bool = True,
         params: _Parameters | None = None,
         **kwargs,
     ) -> None:
 
         self._core.fit(embeddings, parallel, params)
 
-    def add(self, ids: list[str], vectors: np.ndarray) -> None:
+    def add(
+        self, ids: list[str], vectors: np.ndarray, parallel: bool = True
+    ) -> None:
 
-        self._core.add(ids, vectors)
+        self._core.add(ids, vectors, parallel)
 
     def update(self, ids: list[str], vectors: np.ndarray) -> None:
 
@@ -46,16 +48,18 @@ class SimlarEngine(VectorIndex):
 
         self._core.delete(ids)
 
-    def search(self, query: np.ndarray, k: int = 10) -> list[SearchResult]:
+    def search(
+        self, query: np.ndarray, k: int = 10, parallel: bool = True
+    ) -> list[SearchResult]:
 
-        return self._core.search(query, k)
+        return self._core.search(query, k, parallel)
 
     def search_raw(
         self,
         vectors: np.ndarray,
         k: int,
         candidates: np.ndarray | None = None,
-        parallel: bool = False,
+        parallel: bool = True,
         n_candidates: int | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
 

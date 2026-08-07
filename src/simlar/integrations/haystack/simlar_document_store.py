@@ -34,10 +34,21 @@ class SimlarDocumentStore:
         top_k: int = 5,
         relevance_k: int = 100,
         core_k: int = 50,
+        parallel: bool = True,
     ):
+        """
+        Args:
+            top_k: Default number of documents returned by :meth:`search`.
+            relevance_k: Text candidate pool size fed into RRF.
+            core_k: Vector candidate pool size fed into RRF.
+            parallel: Default threading mode for writes and searches. Override
+                per call with the ``parallel`` argument on :meth:`write_documents`
+                and :meth:`search`.
+        """
         self._top_k = top_k
         self._relevance_k = relevance_k
         self._core_k = core_k
+        self._parallel = parallel
         self._index = StreamingHelixIndex(
             text_k=relevance_k,
             vector_k=core_k,
@@ -54,7 +65,16 @@ class SimlarDocumentStore:
         self,
         documents: list[Document],
         policy: DuplicatePolicy = DuplicatePolicy.NONE,
+        parallel: bool | None = None,
     ) -> int:
+        """Write documents to the store.
+
+        Args:
+            documents: Documents with their ``embedding`` field already set.
+            policy: Haystack duplicate-handling policy.
+            parallel: Thread the index write for this call. Defaults to the
+                store-level setting.
+        """
         to_write: list[Document] = []
 
         for doc in documents:
@@ -79,7 +99,9 @@ class SimlarDocumentStore:
         vectors = np.array([d.embedding for d in to_write], dtype=np.float32)
 
         base_pos = len(self._corpus)
-        self._index.add_batch(texts, vectors)
+        self._index.add_batch(
+            texts, vectors, self._parallel if parallel is None else parallel
+        )
         self._corpus.extend(texts)
         self._haystack_docs.extend(to_write)
         for i, doc in enumerate(to_write):
@@ -95,6 +117,7 @@ class SimlarDocumentStore:
         query_embedding: list[float],
         top_k: int | None = None,
         filters: dict | None = None,
+        parallel: bool | None = None,
     ) -> list[Document]:
         """Hybrid search. Both query_text and query_embedding are required.
 
@@ -103,6 +126,7 @@ class SimlarDocumentStore:
             query_embedding: Pre-computed query vector (must match indexed document dimension).
             top_k: Override the store-level top_k for this query.
             filters: Optional Haystack filter dict applied post-retrieval.
+            parallel: Thread this search. Defaults to the store-level setting.
 
         Returns:
             List of Haystack Documents ranked by RRF-fused score, with original metadata preserved.
@@ -116,7 +140,10 @@ class SimlarDocumentStore:
         query_vector = np.array(query_embedding, dtype=np.float32)
 
         ids, scores = self._index.search(
-            query_text=query_text, query_vector=query_vector, k=fetch_k
+            query_text=query_text,
+            query_vector=query_vector,
+            k=fetch_k,
+            parallel=self._parallel if parallel is None else parallel,
         )
 
         results: list[Document] = []
@@ -267,6 +294,7 @@ class SimlarDocumentStore:
                 "top_k": self._top_k,
                 "relevance_k": self._relevance_k,
                 "core_k": self._core_k,
+                "parallel": self._parallel,
             },
         }
         with open(root / "store.json", "w", encoding="utf-8") as f:
@@ -308,6 +336,7 @@ class SimlarDocumentStore:
                 "top_k": self._top_k,
                 "relevance_k": self._relevance_k,
                 "core_k": self._core_k,
+                "parallel": self._parallel,
             },
         }
 
