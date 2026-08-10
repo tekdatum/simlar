@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,langchain,llama_index,haystack]"
+          pip install -e ".[dev,langchain,llama_index,haystack,bm25x]"
           pip install pytest-mock pytest-cov
 
       - name: Ruff Check

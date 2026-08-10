@@ -27,6 +27,11 @@ dependencies = [
 langchain   = ["langchain-core>=0.2"]
 haystack    = ["haystack-ai>=2.0"]
 llama_index = ["llama-index-core>=0.10"]
+# bm25x only ships compiled wheels for Python 3.12 (no wheels for other versions, no sdist),
+# so this requirement is gated by an environment marker rather than being an unconditional
+# dependency: `pip install simlar[bm25x]` is safe to run on any supported Python version, but
+# only actually installs bm25x where a wheel exists. See BM25xIndex's module docstring.
+bm25x = ["bm25x>=0.3,<0.4; python_version == \"3.12\""]
 dev = [
     "pytest>=8.0",
     "numpy>=1.24,<2.5",
@@ -107,4 +112,8 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["fsspec", "fsspec.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["bm25x", "bm25x.*"]
 ignore_missing_imports = true

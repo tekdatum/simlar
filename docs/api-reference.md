@@ -67,6 +67,59 @@ results = idx.search("hello", k=2)
 
 ---
 
+## BM25xIndex
+
+Keyword search over text, backed by the open-source [`bm25x`](https://pypi.org/project/bm25x/)
+library instead of `simlar_engine` — a fully independent `TextIndex` implementation with no
+proprietary dependency at all. See [Concepts](concepts.md#bm25xindex--keyword-search-no-engine-dependency)
+for when to reach for this over `RelevanceIndex`.
+
+**Requires the `bm25x` extra**, which only ships wheels for Python 3.12 as of this writing:
+`pip install "simlar[bm25x]"`. On other Python versions, importing `BM25xIndex` still works, but
+constructing one raises a clear `ImportError` explaining why.
+
+```python
+class BM25xIndex:
+    def __init__(
+        self,
+        method: str = "lucene",
+        k1: float = 1.5,
+        b: float = 0.75,
+        delta: float = 0.5,
+    ) -> None: ...
+
+    def add(self, ids: list[str], texts: list[str]) -> None: ...
+    def update(self, ids: list[str], texts: list[str]) -> None: ...
+    def delete(self, ids: list[str]) -> None: ...
+    def search(self, query: str, k: int) -> list[SearchResult]: ...
+    def save(self, path: str) -> None: ...
+
+    @classmethod
+    def load(cls, path: str) -> BM25xIndex: ...
+```
+
+Unlike `RelevanceIndex`, `add()`/`update()`/`delete()` here are genuinely incremental — no need to
+resupply the whole corpus. `add()` raises `ValueError` on a duplicate id (use `update()` instead);
+`update()`/`delete()` raise `ValueError` on an unknown id; `fit()` raises `ValueError` on an empty
+corpus; `search()`/`search_raw()` raise `ValueError` on an empty/untrained index.
+
+### Example
+
+```python
+from simlar import BM25xIndex
+
+idx = BM25xIndex()
+idx.add(ids=["a", "b", "c"], texts=["hello world", "foo bar baz", "quick brown fox"])
+
+results = idx.search("hello", k=2)
+# results[0].id == "a"
+
+idx.update(ids=["b"], texts=["updated content"])
+idx.delete(ids=["c"])
+```
+
+---
+
 ## SimlarEngine
 
 Semantic search over vector embeddings.

@@ -16,6 +16,16 @@ pip install simlar
 pip install simlar-engine
 ```
 
+`BM25xIndex` (see below) needs the `bm25x` extra, which currently only ships wheels for
+**Python 3.12**:
+
+```bash
+pip install "simlar[bm25x]"
+```
+
+On other Python versions this installs fine but `BM25xIndex()` raises a clear `ImportError` at
+construction time rather than at import time — every other index type is unaffected.
+
 ## Quick start
 
 ### Keyword search
@@ -104,6 +114,7 @@ sim_LAR works as a drop-in component in:
 | Index | Best for |
 |-------|----------|
 | `RelevanceIndex` | Keyword search over text — no embeddings required |
+| `BM25xIndex` | Keyword search over text, via the open-source [`bm25x`](https://pypi.org/project/bm25x/) library — no `simlar_engine` dependency (Python 3.12 only, see [concepts.md](docs/concepts.md#bm25xindex--keyword-search-no-engine-dependency)) |
 | `SimlarEngine` | Semantic search over pre-computed embedding vectors |
 | `HelixIndex` | Both signals combined; corpus fits in memory |
 | `StreamingHybridIndex` | Both signals; very large corpora added in batches |

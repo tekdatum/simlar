@@ -1,5 +1,6 @@
 from simlar.contracts import SearchResult, TextIndex, VectorIndex
 from simlar.fusion import ReciprocalRankFusion
+from simlar.indexes.bm25x_index import BM25xIndex
 from simlar.indexes.helix_index import HelixIndex
 from simlar.indexes.registry import load_from_directory, register
 from simlar.indexes.relevance_index import RelevanceIndex
@@ -16,6 +17,7 @@ __all__ = [
     # Indexes
     "RelevanceIndex",
     "SimlarEngine",
+    "BM25xIndex",
     "HelixIndex",
     "StreamingHybridIndex",
     # Registry

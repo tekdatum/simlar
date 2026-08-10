@@ -35,7 +35,7 @@ results[0].id  # "a"
 
 ## Indexes
 
-simlar ships four index types. Pick the one that matches your data and scale.
+simlar ships five index types. Pick the one that matches your data and scale.
 
 ### RelevanceIndex — keyword search
 
@@ -44,6 +44,28 @@ Finds documents that contain the right words. It understands that a rare word is
 **Use when:** your queries are keyword-based and you need fast, explainable results. No embeddings required.
 
 **Limitation:** does not understand meaning — searching for "car" won't surface a document that only says "automobile."
+
+---
+
+### BM25xIndex — keyword search, no engine dependency
+
+The same kind of keyword search as `RelevanceIndex`, but scored by the open-source
+[`bm25x`](https://pypi.org/project/bm25x/) library instead of the proprietary `simlar_engine`
+binary. It exists to prove the `TextIndex` contract is genuinely pluggable by anyone, not just
+TekDatum's own engine — `HelixIndex`/`StreamingHybridIndex` accept it as a drop-in `text_index`
+exactly like `RelevanceIndex`.
+
+**Use when:** you want keyword search without installing `simlar_engine` at all, or you want a
+fully open-source stack end to end.
+
+**Limitation:** `bm25x` currently only ships compiled wheels for **Python 3.12** (no wheels for
+3.11/3.13, no source distribution) — see [Installation](../README.md#installation). On other
+Python versions `BM25xIndex` is still importable but raises a clear error when constructed.
+
+**Note on licensing:** `bm25x`'s own package metadata doesn't declare a license (no `license`
+field, no bundled `LICENSE` file as of the version this was written against) — check its actual
+source repository directly if your use case has a license requirement; don't assume a specific
+license from its presence on PyPI alone.
 
 ---
 
@@ -79,6 +101,7 @@ The same hybrid approach as HelixIndex, but designed for corpora too large to fi
 | I have… | I need… | Index |
 |---------|---------|-------|
 | Text | Keyword matching | `RelevanceIndex` |
+| Text, no `simlar_engine` dependency | Keyword matching (Python 3.12 only) | `BM25xIndex` |
 | Embeddings | Semantic similarity | `SimlarEngine` |
 | Text + embeddings | Both signals | `HelixIndex` |
 | Text + embeddings, massive scale | Both signals at scale | `StreamingHybridIndex` |

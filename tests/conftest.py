@@ -203,6 +203,13 @@ class _HelixCore:
         self._trained = True
 
     def add(self, ids, texts=None, vectors=None):
+        # Forward to the injected sub-indexes (2-arg add(), matching the TextIndex/VectorIndex
+        # ABC contract) so tests can verify a custom text_index/vector_index actually receives
+        # what was added, not just that construction didn't crash.
+        if texts is not None:
+            self._text_index.add(ids, texts)
+        if vectors is not None:
+            self._vector_index.add(ids, vectors)
         self._ids = list(ids)
         self._trained = True
 
@@ -296,11 +303,21 @@ class _TextCore:
 
 
 class _StreamingCore:
-    def __init__(self, **kwargs):
+    def __init__(self, text_index_cls=None, vector_index_cls=None, **kwargs):
         self._count: int = 0
         self._trained = False
+        self._text_index_cls = text_index_cls
+        self._shards: list = []
 
     def add_batch(self, corpus, vectors=None, parallel=False):
+        # Real engine builds one new shard per add_batch() call, each a zero-arg-constructed
+        # text_index_cls() fit on that batch's corpus - construct one here too (even though this
+        # stub doesn't do real per-shard search) so a bad text_index_cls (wrong arity, fit()
+        # that raises, etc.) surfaces here instead of only in the real engine.
+        if self._text_index_cls is not None and corpus:
+            shard_text_index = self._text_index_cls()
+            shard_text_index.fit(list(corpus), parallel=parallel)
+            self._shards.append(shard_text_index)
         self._count += len(corpus) if hasattr(corpus, "__len__") else 0
         self._trained = True
 

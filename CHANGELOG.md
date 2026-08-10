@@ -3,6 +3,15 @@
 All notable changes to **simlar** (the open-source wrapper) are documented here.
 Dates are in YYYY-MM-DD format.
 
+## [Unreleased]
+
+### Added
+- `BM25xIndex` — a `TextIndex` implementation backed by the open-source
+  [`bm25x`](https://pypi.org/project/bm25x/) library, with no dependency on `simlar_engine`.
+  Registered as `"bm25x"`; drop-in compatible with `HelixIndex`/`StreamingHybridIndex` anywhere
+  a `TextIndex` is accepted. Install via `pip install "simlar[bm25x]"` — currently gated to
+  **Python 3.12** by an environment marker, since `bm25x` only ships wheels for that version.
+
 ## [1.0.0] — 2026-06-24
 
 ### Added
