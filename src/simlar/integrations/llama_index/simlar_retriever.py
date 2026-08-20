@@ -48,6 +48,7 @@ class SimlarRetriever(BaseRetriever):  # type: ignore[misc]
         id_to_text: dict[str, str],
         embed_model: BaseEmbedding,
         k: int = 5,
+        parallel: bool = True,
     ) -> None:
         """
         Args:
@@ -58,6 +59,7 @@ class SimlarRetriever(BaseRetriever):  # type: ignore[misc]
                 embed the query string at retrieval time. Must have the same
                 output dimension as the vectors stored in the index.
             k: Number of results to return.
+            parallel: Threading mode used for every retrieval.
         """
         if not _LLAMAINDEX_AVAILABLE:
             raise ImportError(
@@ -67,6 +69,7 @@ class SimlarRetriever(BaseRetriever):  # type: ignore[misc]
         self._id_to_text = id_to_text
         self._embed_model = embed_model
         self._k = k
+        self._parallel = parallel
         super().__init__()
 
     # ── Factories ─────────────────────────────────────────────────────────────
@@ -84,6 +87,7 @@ class SimlarRetriever(BaseRetriever):  # type: ignore[misc]
         top_k: int = 100,
         text_index: TextIndex | None = None,
         vector_index: VectorIndex | None = None,
+        parallel: bool = True,
     ) -> SimlarRetriever:
         """Build a ``SimlarRetriever`` from raw texts, IDs, and pre-computed vectors.
 
@@ -103,17 +107,19 @@ class SimlarRetriever(BaseRetriever):  # type: ignore[misc]
             vector_index: Swap in a different VectorIndex implementation
                 instead of HelixIndex's default SimlarEngine. None keeps the
                 default.
+            parallel: Threading mode for the initial build and for retrievals.
         """
         index = HelixIndex(
             text_index=text_index, vector_index=vector_index,
             text_k=relevance_k, vector_k=core_k, top_k=top_k,
         )
-        index.add(ids=ids, texts=texts, vectors=vectors)
+        index.add(ids=ids, texts=texts, vectors=vectors, parallel=parallel)
         return cls(
             index=index,
             id_to_text=dict(zip(ids, texts, strict=False)),
             embed_model=embed_model,
             k=k,
+            parallel=parallel,
         )
 
     @classmethod
@@ -122,6 +128,7 @@ class SimlarRetriever(BaseRetriever):  # type: ignore[misc]
         directory: str,
         embed_model: BaseEmbedding,
         k: int = 5,
+        parallel: bool = True,
     ) -> SimlarRetriever:
         """Load a previously saved retriever from disk.
 
@@ -130,6 +137,7 @@ class SimlarRetriever(BaseRetriever):  # type: ignore[misc]
             embed_model: Embedding model used to embed queries at retrieval time.
                 Must match the model used when the index was originally built.
             k: Number of results to return.
+            parallel: Threading mode used for every retrieval.
 
         Raises:
             ValueError: If no saved retriever exists at ``directory``.
@@ -143,7 +151,13 @@ class SimlarRetriever(BaseRetriever):  # type: ignore[misc]
         if id_to_text_path.exists():
             with open(id_to_text_path, encoding="utf-8") as f:
                 id_to_text = json.load(f)
-        return cls(index=index, id_to_text=id_to_text, embed_model=embed_model, k=k)
+        return cls(
+            index=index,
+            id_to_text=id_to_text,
+            embed_model=embed_model,
+            k=k,
+            parallel=parallel,
+        )
 
     # ── Persistence ───────────────────────────────────────────────────────────
 
@@ -190,6 +204,7 @@ class SimlarRetriever(BaseRetriever):  # type: ignore[misc]
             query_text=query_bundle.query_str,
             query_vector=query_vector,
             k=self._k,
+            parallel=self._parallel,
         )
         return self._to_nodes(results)
 

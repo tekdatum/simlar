@@ -75,17 +75,21 @@ class SimlarVectorStore(BasePydanticVectorStore):  # type: ignore[misc]
         index: A pre-built ``HelixIndex``.
         id_to_text: Mapping from document ID to raw text. Populated automatically
             by ``add()``; supply manually when constructing from an existing index.
+        parallel: Default threading mode for index writes and queries. Override
+            per call by passing ``parallel=`` to ``add()`` or ``query()``.
     """
 
     stores_text: bool = True
 
     _index: Any = PrivateAttr()
     _id_to_text: dict[str, str] = PrivateAttr()
+    _parallel: bool = PrivateAttr()
 
     def __init__(
         self,
         index: HelixIndex,
         id_to_text: dict[str, str] | None = None,
+        parallel: bool = True,
     ) -> None:
         if not _LLAMAINDEX_AVAILABLE:
             raise ImportError(
@@ -94,6 +98,7 @@ class SimlarVectorStore(BasePydanticVectorStore):  # type: ignore[misc]
         super().__init__(stores_text=True)
         self._index = index
         self._id_to_text = id_to_text if id_to_text is not None else {}
+        self._parallel = parallel
 
     # ── Factories ─────────────────────────────────────────────────────────────
 
@@ -108,6 +113,7 @@ class SimlarVectorStore(BasePydanticVectorStore):  # type: ignore[misc]
         top_k: int = 100,
         text_index: TextIndex | None = None,
         vector_index: VectorIndex | None = None,
+        parallel: bool = True,
     ) -> SimlarVectorStore:
         """Build a ``SimlarVectorStore`` from raw texts, IDs, and pre-computed vectors.
 
@@ -124,33 +130,42 @@ class SimlarVectorStore(BasePydanticVectorStore):  # type: ignore[misc]
             vector_index: Swap in a different VectorIndex implementation
                 instead of HelixIndex's default SimlarEngine. None keeps the
                 default.
+            parallel: Threading mode for the initial build and for later
+                writes and queries on the returned store.
         """
         index = HelixIndex(
             text_index=text_index, vector_index=vector_index,
             text_k=relevance_k, vector_k=core_k, top_k=top_k,
         )
-        index.add(ids=ids, texts=texts, vectors=vectors)
-        return cls(index=index, id_to_text=dict(zip(ids, texts, strict=False)))
+        index.add(ids=ids, texts=texts, vectors=vectors, parallel=parallel)
+        return cls(
+            index=index,
+            id_to_text=dict(zip(ids, texts, strict=False)),
+            parallel=parallel,
+        )
 
     @classmethod
     def from_persist_dir(
         cls,
         persist_dir: str,
         fs: Any | None = None,
+        parallel: bool = True,
     ) -> SimlarVectorStore:
         """Load a previously saved store from a directory."""
-        return cls.from_persist_path(persist_path=persist_dir, fs=fs)
+        return cls.from_persist_path(persist_path=persist_dir, fs=fs, parallel=parallel)
 
     @classmethod
     def from_persist_path(
         cls,
         persist_path: str,
         fs: Any | None = None,
+        parallel: bool = True,
     ) -> SimlarVectorStore:
         """Load a previously saved store from a directory written by ``persist()``.
 
         Args:
             persist_path: Directory previously written by :meth:`persist`.
+            parallel: Default threading mode for the loaded store.
 
         Raises:
             NotImplementedError: If a non-local ``fs`` is provided.
@@ -166,7 +181,7 @@ class SimlarVectorStore(BasePydanticVectorStore):  # type: ignore[misc]
         if id_to_text_path.exists():
             with open(id_to_text_path, encoding="utf-8") as f:
                 id_to_text = json.load(f)
-        return cls(index=index, id_to_text=id_to_text)
+        return cls(index=index, id_to_text=id_to_text, parallel=parallel)
 
     # ── Core interface ────────────────────────────────────────────────────────
 
@@ -183,6 +198,8 @@ class SimlarVectorStore(BasePydanticVectorStore):  # type: ignore[misc]
 
         Args:
             nodes: Nodes with embeddings set.
+            **add_kwargs: Accepts ``parallel`` to thread this write, defaulting
+                to the store-level setting.
 
         Returns:
             List of node IDs that were written.
@@ -198,7 +215,12 @@ class SimlarVectorStore(BasePydanticVectorStore):  # type: ignore[misc]
                 "Run an embedder component first."
             )
         vectors = np.array(embeddings, dtype=np.float32)
-        self._index.add(ids=ids, texts=texts, vectors=vectors)
+        self._index.add(
+            ids=ids,
+            texts=texts,
+            vectors=vectors,
+            parallel=add_kwargs.get("parallel", self._parallel),
+        )
         for node_id, text in zip(ids, texts, strict=False):
             self._id_to_text[node_id] = text
         return ids
@@ -213,6 +235,8 @@ class SimlarVectorStore(BasePydanticVectorStore):  # type: ignore[misc]
         Args:
             query: Must have ``query_embedding`` set. ``query_str`` is used for the
                 text leg when provided; omitting it falls back to vector-only search.
+            **kwargs: Accepts ``parallel`` to thread this query, defaulting to
+                the store-level setting.
 
         Returns:
             ``VectorStoreQueryResult`` with ``nodes``, ``similarities``, and ``ids``.
@@ -224,6 +248,7 @@ class SimlarVectorStore(BasePydanticVectorStore):  # type: ignore[misc]
             query_text=query.query_str,
             query_vector=query_vector,
             k=query.similarity_top_k,
+            parallel=kwargs.get("parallel", self._parallel),
         )
         nodes = [
             TextNode(

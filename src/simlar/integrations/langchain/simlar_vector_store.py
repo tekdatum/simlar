@@ -35,6 +35,7 @@ class SimlarVectorStore(VectorStore):
         top_k: int = 100,
         text_index: TextIndex | None = None,
         vector_index: VectorIndex | None = None,
+        parallel: bool = True,
     ) -> None:
         """
         Args:
@@ -48,6 +49,9 @@ class SimlarVectorStore(VectorStore):
             vector_index: Swap in a different VectorIndex implementation
                 instead of HelixIndex's default SimlarEngine. None keeps the
                 default.
+            parallel: Default threading mode for index writes and searches.
+                Override per call by passing ``parallel=`` to ``add_texts`` or
+                the ``similarity_search*`` methods.
         """
         self._embedding = embedding
         self._text_k = text_k
@@ -55,6 +59,7 @@ class SimlarVectorStore(VectorStore):
         self._top_k = top_k
         self._text_index = text_index
         self._vector_index = vector_index
+        self._parallel = parallel
         self._ids: list[str] = []
         self._texts: list[str] = []
         self._metadatas: list[dict] = []
@@ -79,7 +84,12 @@ class SimlarVectorStore(VectorStore):
             top_k=self._top_k,
         )
 
-    def _raw_search(self, query: str, k: int) -> list[tuple[Document, float]]:
+    def _raw_search(
+        self,
+        query: str,
+        k: int,
+        parallel: bool | None = None,
+    ) -> list[tuple[Document, float]]:
         if not self._texts:
             return []
 
@@ -91,6 +101,7 @@ class SimlarVectorStore(VectorStore):
                 query_text=query,
                 query_vector=query_vector,
                 k=effective_k,
+                parallel=self._parallel if parallel is None else parallel,
             ),
         )
 
@@ -130,10 +141,13 @@ class SimlarVectorStore(VectorStore):
             texts: Texts to add.
             metadatas: Optional metadata dicts, one per text.
             ids: Optional explicit string IDs. Generated as UUIDs if omitted.
+            parallel: Thread the index rebuild for this call. Defaults to the
+                store-level setting.
 
         Returns:
             List of IDs for the added (or updated) documents.
         """
+        parallel = kwargs.pop("parallel", self._parallel)
         texts_list = list(texts)
         if not texts_list:
             return []
@@ -169,6 +183,7 @@ class SimlarVectorStore(VectorStore):
             ids=self._ids,
             texts=self._texts,
             vectors=np.array(self._vectors, dtype=np.float32),
+            parallel=parallel,
         )
 
         return list(ids)
@@ -179,7 +194,7 @@ class SimlarVectorStore(VectorStore):
         k: int = 4,
         **kwargs: Any,
     ) -> list[Document]:
-        return [doc for doc, _ in self._raw_search(query, k)]
+        return [doc for doc, _ in self._raw_search(query, k, kwargs.get("parallel"))]
 
     def similarity_search_with_score(
         self,
@@ -187,7 +202,7 @@ class SimlarVectorStore(VectorStore):
         k: int = 4,
         **kwargs: Any,
     ) -> list[tuple[Document, float]]:
-        return self._raw_search(query, k)
+        return self._raw_search(query, k, kwargs.get("parallel"))
 
     # ── Factory ────────────────────────────────────────────────────────────────
 
@@ -204,6 +219,7 @@ class SimlarVectorStore(VectorStore):
         top_k: int = 100,
         text_index: TextIndex | None = None,
         vector_index: VectorIndex | None = None,
+        parallel: bool = True,
         **kwargs: Any,
     ) -> SimlarVectorStore:
         """Build a SimlarVectorStore from a list of texts.
@@ -235,6 +251,7 @@ class SimlarVectorStore(VectorStore):
             top_k=top_k,
             text_index=text_index,
             vector_index=vector_index,
+            parallel=parallel,
         )
         store.add_texts(texts, metadatas=metadatas, ids=ids)
         return store
@@ -267,6 +284,7 @@ class SimlarVectorStore(VectorStore):
                     "text_k": self._text_k,
                     "vector_k": self._vector_k,
                     "top_k": self._top_k,
+                    "parallel": self._parallel,
                 },
                 f,
             )
@@ -286,6 +304,8 @@ class SimlarVectorStore(VectorStore):
             embedding: Embeddings model for future queries. Must have the same
                 output dimension as the model used when building the index.
                 Documents are NOT re-embedded on load.
+            parallel: Optional keyword overriding the threading mode saved in
+                the sidecar.
         """
         d = Path(folder)
         with open(d / _SIDECAR_FILENAME, "rb") as f:
@@ -296,6 +316,7 @@ class SimlarVectorStore(VectorStore):
             text_k=sidecar["text_k"],
             vector_k=sidecar["vector_k"],
             top_k=sidecar["top_k"],
+            parallel=kwargs.get("parallel", sidecar.get("parallel", True)),
         )
         store._ids = sidecar["ids"]
         store._texts = sidecar["texts"]

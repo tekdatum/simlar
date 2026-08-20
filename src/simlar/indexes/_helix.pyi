@@ -53,6 +53,7 @@ class HelixIndex(CompositeIndex):
         ids: list[str],
         texts: list[str] | None = None,
         vectors: np.ndarray | None = None,
+        parallel: bool = False,
     ) -> None: ...
     def search(
         self,
@@ -80,3 +81,5 @@ class HelixIndex(CompositeIndex):
     def fit_values(self) -> np.ndarray | None: ...
     @property
     def quantization_params(self) -> _Parameters | None: ...
+    @property
+    def ids(self) -> list[str]: ...
