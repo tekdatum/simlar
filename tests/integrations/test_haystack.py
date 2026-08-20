@@ -387,3 +387,28 @@ class TestSimlarHybridRetriever:
         retriever = SimlarHybridRetriever(document_store=populated_store, top_k=10)
         out = retriever.run(query="cancer", query_embedding=UNIT_VEC, top_k=1)
         assert len(out["documents"]) <= 1
+
+
+class TestSwappableIndexes:
+    def test_default_text_index_cls_is_none(self, store):
+        # StreamingHelixIndex defaults its own text index when the store
+        # doesn't override it -- the store just shouldn't force a choice.
+        assert store._text_index_cls is None
+
+    def test_custom_text_index_cls_is_forwarded(self):
+        pytest.importorskip("bm25x", reason="bm25x not installed")
+        from simlar.indexes.bm25x_index import BM25xIndex
+
+        store = SimlarDocumentStore(top_k=5, text_index_cls=BM25xIndex)
+        store.write_documents([_doc("hello world"), _doc("foo bar")])
+        assert isinstance(store._index._core._shards[0], BM25xIndex)
+
+    def test_custom_text_index_cls_survives_delete_all(self):
+        pytest.importorskip("bm25x", reason="bm25x not installed")
+        from simlar.indexes.bm25x_index import BM25xIndex
+
+        store = SimlarDocumentStore(top_k=5, text_index_cls=BM25xIndex)
+        store.write_documents([_doc("hello world")])
+        store.delete_all_documents()
+        store.write_documents([_doc("fresh")])
+        assert isinstance(store._index._core._shards[0], BM25xIndex)

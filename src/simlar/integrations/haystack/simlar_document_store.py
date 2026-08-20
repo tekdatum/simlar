@@ -25,6 +25,7 @@ from haystack.document_stores.errors import DuplicateDocumentError
 from haystack.document_stores.types import DuplicatePolicy
 from haystack.errors import FilterError
 
+from simlar.contracts import TextIndex, VectorIndex
 from simlar.indexes.streaming_index import StreamingHelixIndex
 
 
@@ -34,11 +35,37 @@ class SimlarDocumentStore:
         top_k: int = 5,
         relevance_k: int = 100,
         core_k: int = 50,
+        text_index_cls: type[TextIndex] | None = None,
+        vector_index_cls: type[VectorIndex] | None = None,
     ):
+        """
+        Args:
+            top_k: Default number of documents returned by :meth:`search`.
+            relevance_k: Text candidate pool size fed into RRF.
+            core_k: Vector candidate pool size fed into RRF.
+            text_index_cls: Swap in a different TextIndex implementation (e.g.
+                BM25xIndex) instead of the default RelevanceIndex. One fresh
+                instance is constructed per shard by StreamingHelixIndex, so
+                this takes a class, not an instance. None keeps the default.
+            vector_index_cls: Swap in a different VectorIndex implementation
+                instead of the default SimlarEngine. None keeps the default.
+
+        .. note::
+            ``text_index_cls``/``vector_index_cls`` are not yet persisted by
+            ``to_dict()``/``save()`` — a class reference isn't JSON-serializable
+            the way ``top_k``/``relevance_k``/``core_k`` are. A store built
+            with a custom index and later reconstructed via ``from_dict()``
+            (Haystack pipeline serialization) will silently fall back to the
+            default index classes. Known limitation, not yet solved.
+        """
         self._top_k = top_k
         self._relevance_k = relevance_k
         self._core_k = core_k
+        self._text_index_cls = text_index_cls
+        self._vector_index_cls = vector_index_cls
         self._index = StreamingHelixIndex(
+            text_index_cls=text_index_cls,
+            vector_index_cls=vector_index_cls,
             text_k=relevance_k,
             vector_k=core_k,
             top_k=top_k,
@@ -155,6 +182,8 @@ class SimlarDocumentStore:
     def delete_all_documents(self) -> None:
         """Reset the store and rebuild the index from scratch."""
         self._index = StreamingHelixIndex(
+            text_index_cls=self._text_index_cls,
+            vector_index_cls=self._vector_index_cls,
             text_k=self._relevance_k,
             vector_k=self._core_k,
             top_k=self._top_k,

@@ -86,3 +86,32 @@ class TestSimlarRetriever:
         )
         nodes = r.retrieve("immunotherapy")
         assert isinstance(nodes, list)
+
+
+class TestSwappableIndexes:
+    def test_default_text_index_is_relevance_core(self, retriever):
+        # HelixIndex().text_index returns the compiled core object, not the
+        # RelevanceIndex Python wrapper -- confirmed against the real engine.
+        from simlar_engine.indexes._relevance_impl import _RelevanceCore
+
+        assert isinstance(retriever._index.text_index, _RelevanceCore)
+
+    def test_custom_text_index_via_retriever_from_texts(self):
+        pytest.importorskip("bm25x", reason="bm25x not installed")
+        from simlar.indexes.bm25x_index import BM25xIndex
+
+        r = SimlarRetriever.from_texts(
+            texts=_TEXTS, ids=_IDS, vectors=_VECTORS, embed_model=_EMBED, k=3,
+            text_index=BM25xIndex(),
+        )
+        assert isinstance(r._index.text_index, BM25xIndex)
+
+    def test_custom_text_index_via_vector_store_from_texts(self):
+        pytest.importorskip("bm25x", reason="bm25x not installed")
+        from simlar.indexes.bm25x_index import BM25xIndex
+        from simlar.integrations.llama_index.simlar_vector_store import SimlarVectorStore
+
+        store = SimlarVectorStore.from_texts(
+            texts=_TEXTS, ids=_IDS, vectors=_VECTORS, text_index=BM25xIndex()
+        )
+        assert isinstance(store.client.text_index, BM25xIndex)

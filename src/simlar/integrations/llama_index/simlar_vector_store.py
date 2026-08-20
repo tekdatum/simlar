@@ -48,6 +48,7 @@ except ImportError:
     BasePydanticVectorStore = object  # type: ignore[misc,assignment]
 
 from simlar import HelixIndex
+from simlar.contracts import TextIndex, VectorIndex
 
 # ── SimlarVectorStore ──────────────────────────────────────────────────────────
 # ── Internal helpers ───────────────────────────────────────────────────────────
@@ -105,6 +106,8 @@ class SimlarVectorStore(BasePydanticVectorStore):  # type: ignore[misc]
         relevance_k: int = 500,
         core_k: int = 200,
         top_k: int = 100,
+        text_index: TextIndex | None = None,
+        vector_index: VectorIndex | None = None,
     ) -> SimlarVectorStore:
         """Build a ``SimlarVectorStore`` from raw texts, IDs, and pre-computed vectors.
 
@@ -115,8 +118,17 @@ class SimlarVectorStore(BasePydanticVectorStore):  # type: ignore[misc]
             relevance_k: Text candidate pool size fed into RRF.
             core_k: Vector candidate pool size fed into RRF.
             top_k: Final result list length from the HelixIndex.
+            text_index: Swap in a different TextIndex implementation (e.g.
+                BM25xIndex) instead of HelixIndex's default RelevanceIndex.
+                None keeps the default.
+            vector_index: Swap in a different VectorIndex implementation
+                instead of HelixIndex's default SimlarEngine. None keeps the
+                default.
         """
-        index = HelixIndex(text_k=relevance_k, vector_k=core_k, top_k=top_k)
+        index = HelixIndex(
+            text_index=text_index, vector_index=vector_index,
+            text_k=relevance_k, vector_k=core_k, top_k=top_k,
+        )
         index.add(ids=ids, texts=texts, vectors=vectors)
         return cls(index=index, id_to_text=dict(zip(ids, texts, strict=False)))
 

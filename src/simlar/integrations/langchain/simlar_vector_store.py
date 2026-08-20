@@ -16,7 +16,7 @@ from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
 
-from simlar.contracts import SearchResult
+from simlar.contracts import SearchResult, TextIndex, VectorIndex
 from simlar.indexes.helix_index import HelixIndex
 
 logger = logging.getLogger(__name__)
@@ -33,11 +33,28 @@ class SimlarVectorStore(VectorStore):
         text_k: int = 500,
         vector_k: int = 200,
         top_k: int = 100,
+        text_index: TextIndex | None = None,
+        vector_index: VectorIndex | None = None,
     ) -> None:
+        """
+        Args:
+            embedding: Embeddings model used for documents and queries.
+            text_k: Text candidate pool size fed into RRF.
+            vector_k: Vector candidate pool size fed into RRF.
+            top_k: Final result list length from the HelixIndex.
+            text_index: Swap in a different TextIndex implementation (e.g.
+                BM25xIndex) instead of HelixIndex's default RelevanceIndex.
+                None keeps the default.
+            vector_index: Swap in a different VectorIndex implementation
+                instead of HelixIndex's default SimlarEngine. None keeps the
+                default.
+        """
         self._embedding = embedding
         self._text_k = text_k
         self._vector_k = vector_k
         self._top_k = top_k
+        self._text_index = text_index
+        self._vector_index = vector_index
         self._ids: list[str] = []
         self._texts: list[str] = []
         self._metadatas: list[dict] = []
@@ -48,7 +65,15 @@ class SimlarVectorStore(VectorStore):
     # ── Internal helpers ───────────────────────────────────────────────────────
 
     def _make_index(self) -> HelixIndex:
+        # Note: add_texts() calls this again on every incremental add, rebuilding
+        # from scratch (HelixIndex isn't append-in-place). A custom text_index/
+        # vector_index *instance* is reused across those rebuilds rather than
+        # freshly constructed each time -- fine for the common one-shot
+        # from_texts() usage, but a custom index that can't be fit twice would
+        # need resetting between repeated add_texts() calls.
         return HelixIndex(
+            text_index=self._text_index,
+            vector_index=self._vector_index,
             text_k=self._text_k,
             vector_k=self._vector_k,
             top_k=self._top_k,
@@ -177,6 +202,8 @@ class SimlarVectorStore(VectorStore):
         text_k: int = 500,
         vector_k: int = 200,
         top_k: int = 100,
+        text_index: TextIndex | None = None,
+        vector_index: VectorIndex | None = None,
         **kwargs: Any,
     ) -> SimlarVectorStore:
         """Build a SimlarVectorStore from a list of texts.
@@ -189,12 +216,25 @@ class SimlarVectorStore(VectorStore):
                     embedding=OpenAIEmbeddings(),
                     metadatas=[{"source": "a"}, {"source": "b"}],
                 )
+
+            Swap in a different text index (e.g. bm25x instead of the default
+            RelevanceIndex)::
+
+                from simlar.indexes.bm25x_index import BM25xIndex
+
+                store = SimlarVectorStore.from_texts(
+                    texts=["cancer treatment", "machine learning"],
+                    embedding=OpenAIEmbeddings(),
+                    text_index=BM25xIndex(),
+                )
         """
         store = cls(
             embedding=embedding,
             text_k=text_k,
             vector_k=vector_k,
             top_k=top_k,
+            text_index=text_index,
+            vector_index=vector_index,
         )
         store.add_texts(texts, metadatas=metadatas, ids=ids)
         return store

@@ -75,3 +75,30 @@ class TestSimlarVectorStore:
     def test_add_empty_list_returns_empty(self, store):
         ids = store.add_texts([])
         assert ids == []
+
+
+class TestSwappableIndexes:
+    def test_default_text_index_is_relevance_core(self, store):
+        # HelixIndex().text_index returns the compiled core object, not the
+        # RelevanceIndex Python wrapper -- confirmed against the real engine.
+        from simlar_engine.indexes._relevance_impl import _RelevanceCore
+
+        assert isinstance(store._index.text_index, _RelevanceCore)
+
+    def test_custom_text_index_via_constructor(self):
+        pytest.importorskip("bm25x", reason="bm25x not installed")
+        from simlar.indexes.bm25x_index import BM25xIndex
+
+        s = SimlarVectorStore(embedding=_ConstantEmbeddings(), text_index=BM25xIndex())
+        assert isinstance(s._index.text_index, BM25xIndex)
+
+    def test_custom_text_index_via_from_texts(self):
+        pytest.importorskip("bm25x", reason="bm25x not installed")
+        from simlar.indexes.bm25x_index import BM25xIndex
+
+        s = SimlarVectorStore.from_texts(
+            texts=["hello world", "foo bar"],
+            embedding=_ConstantEmbeddings(),
+            text_index=BM25xIndex(),
+        )
+        assert isinstance(s._index.text_index, BM25xIndex)
