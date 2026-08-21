@@ -10,14 +10,11 @@ You can also get a retriever directly from the store::
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
-if TYPE_CHECKING:
-    from simlar.integrations.langchain.simlar_vector_store import SimlarVectorStore
+from simlar.integrations.langchain.simlar_vector_store import SimlarVectorStore
 
 
 class SimlarRetriever(BaseRetriever):
@@ -33,10 +30,15 @@ class SimlarRetriever(BaseRetriever):
             store = SimlarVectorStore.from_texts(texts, OpenAIEmbeddings())
             retriever = SimlarRetriever(vector_store=store, k=5)
             docs = retriever.invoke("cancer treatment")
+
+    Attributes:
+        parallel: Threading mode for the underlying search. ``None`` (default)
+            defers to the store-level setting.
     """
 
     vector_store: SimlarVectorStore
     k: int = 5
+    parallel: bool | None = None
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -46,4 +48,4 @@ class SimlarRetriever(BaseRetriever):
         *,
         run_manager: CallbackManagerForRetrieverRun,
     ) -> list[Document]:
-        return self.vector_store.similarity_search(query, k=self.k)
+        return self.vector_store.similarity_search(query, k=self.k, parallel=self.parallel)

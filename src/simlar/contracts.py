@@ -44,6 +44,10 @@ class Index(ABC):
     @abstractmethod
     def is_trained(self) -> bool: ...
 
+    @property
+    @abstractmethod
+    def ids(self) -> list[str]: ...
+
 
 # ── Text index ────────────────────────────────────────────────────────────────
 
@@ -54,8 +58,12 @@ class TextIndex(Index):
     # ── Public API ─────────────────────────────────────────────────────────────
 
     @abstractmethod
-    def add(self, ids: list[str], texts: list[str]) -> None:
-        """Append new documents. Raises ValueError on duplicate IDs; use update() to replace."""
+    def add(self, ids: list[str], texts: list[str], parallel: bool = False) -> None:
+        """Append new documents. Raises ValueError on duplicate IDs; use update() to replace.
+
+        `parallel` is accepted for parity with the vector side; text indexing
+        is single-threaded in every backend.
+        """
 
     @abstractmethod
     def update(self, ids: list[str], texts: list[str]) -> None:
@@ -66,7 +74,8 @@ class TextIndex(Index):
         """Remove documents by ID, rebuilding internal structures."""
 
     @abstractmethod
-    def search(self, query: str, k: int) -> list[SearchResult]: ...
+    def search(self, query: str, k: int, parallel: bool = False) -> list[SearchResult]:
+        """Rank documents against query. `parallel` threads a batch of queries."""
 
     # ── Internal ───────────────────────────────────────────────────────────────
 
@@ -95,10 +104,12 @@ class VectorIndex(Index):
     # ── Public API ─────────────────────────────────────────────────────────────
 
     @abstractmethod
-    def add(self, ids: list[str], vectors: np.ndarray) -> None: ...
+    def add(self, ids: list[str], vectors: np.ndarray, parallel: bool = False) -> None:
+        """Append new vectors. `parallel` threads their quantization."""
 
     @abstractmethod
-    def search(self, query: np.ndarray, k: int) -> list[SearchResult]: ...
+    def search(self, query: np.ndarray, k: int, parallel: bool = False) -> list[SearchResult]:
+        """Rank documents against query. `parallel` threads a batch of queries."""
 
     @abstractmethod
     def update(self, ids: list[str], vectors: np.ndarray) -> None:
@@ -154,7 +165,9 @@ class CompositeIndex(Index):
         query_text: str | None = None,
         query_vector: np.ndarray | None = None,
         k: int = 10,
-    ) -> list[SearchResult]: ...
+        parallel: bool = False,
+    ) -> list[SearchResult]:
+        """Search every sub-index and fuse. `parallel` threads a batch of queries."""
 
     @abstractmethod
     def fit(
@@ -172,10 +185,8 @@ class CompositeIndex(Index):
 
 @runtime_checkable
 class FusionStrategy(Protocol):
-    """Combines N result lists into a single ranked list."""
-
     def __call__(
         self,
-        results: list[list[SearchResult]],
+        results: list[tuple[np.ndarray, np.ndarray]],
         k: int,
-    ) -> list[SearchResult]: ...
+    ) -> tuple[np.ndarray, np.ndarray]: ...

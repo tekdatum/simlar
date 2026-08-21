@@ -50,7 +50,6 @@ class StreamingHelixIndex:
         vectors: np.ndarray,
         parallel: bool = False,
     ) -> None:
-
         self._core.add_batch(corpus, vectors, parallel)
 
     async def add_batch_async(
@@ -59,7 +58,6 @@ class StreamingHelixIndex:
         vectors: np.ndarray,
         parallel: bool = False,
     ) -> None:
-
         import asyncio
 
         loop = asyncio.get_event_loop()
@@ -74,18 +72,15 @@ class StreamingHelixIndex:
         k: int | None = None,
         parallel: bool = False,
     ) -> tuple[np.ndarray, np.ndarray]:
-
         return self._core.search(query_text, query_vector, k, parallel)
 
     # ── Persistence ───────────────────────────────────────────────────────────
 
     def save(self, directory: str) -> None:
-
         self._core.save(directory)
 
     @classmethod
     def load(cls, directory: str) -> StreamingHelixIndex:
-
         obj = cls.__new__(cls)
         obj._core = _StreamingCore.load(directory)
         return obj

@@ -88,7 +88,7 @@ class _SimlarCore:
         self._trained = True
         self._params = params
 
-    def add(self, ids, vectors):
+    def add(self, ids, vectors, parallel=False):
         self._ids = list(ids)
         self._vectors = np.asarray(vectors, dtype=np.float32)
         self._trained = True
@@ -102,7 +102,7 @@ class _SimlarCore:
     def update_vector(self, doc_id: int, vector):
         pass
 
-    def search(self, query, k=10):
+    def search(self, query, k=10, parallel=False):
         n = min(k, len(self._ids))
         return [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
 
@@ -139,7 +139,7 @@ class _RelevanceCore:
     def fit(self, texts, parallel=False, params=None, **kwargs):
         self._trained = True
 
-    def add(self, ids, texts):
+    def add(self, ids, texts, parallel=False):
         self._ids = list(ids)
         self._trained = True
 
@@ -149,7 +149,7 @@ class _RelevanceCore:
     def delete(self, ids):
         pass
 
-    def search(self, query, k=10):
+    def search(self, query, k=10, parallel=False):
         n = min(k, len(self._ids))
         return [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
 
@@ -202,7 +202,7 @@ class _HelixCore:
     def fit(self, corpus, vectors, parallel=False, params=None):
         self._trained = True
 
-    def add(self, ids, texts=None, vectors=None):
+    def add(self, ids, texts=None, vectors=None, parallel=False):
         self._ids = list(ids)
         self._trained = True
 
@@ -256,7 +256,7 @@ class _TextCore:
     def fit(self, corpus, parallel=False, params=None, **kwargs):
         self._trained = True
 
-    def add(self, ids, texts):
+    def add(self, ids, texts, parallel=False):
         self._ids = list(ids)
         self._trained = True
 
@@ -266,7 +266,7 @@ class _TextCore:
     def delete(self, ids):
         self._ids = [i for i in self._ids if i not in set(ids)]
 
-    def search(self, query, k=10):
+    def search(self, query, k=10, parallel=False):
         n = min(k, len(self._ids))
         return [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
 
