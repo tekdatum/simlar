@@ -84,6 +84,17 @@ class SimlarVectorStore(VectorStore):
             top_k=self._top_k,
         )
 
+    def _result_to_doc(self, result: SearchResult) -> tuple[Document, float] | None:
+        pos = self._id_to_pos.get(result.id)
+        if pos is None:
+            return None
+        doc = Document(
+            page_content=self._texts[pos],
+            metadata={**self._metadatas[pos], "_simlar_score": result.score},
+            id=result.id,
+        )
+        return doc, result.score
+
     def _raw_search(
         self,
         query: str,
@@ -107,15 +118,40 @@ class SimlarVectorStore(VectorStore):
 
         out = []
         for result in results:
-            pos = self._id_to_pos.get(result.id)
-            if pos is None:
-                continue
-            doc = Document(
-                page_content=self._texts[pos],
-                metadata={**self._metadatas[pos], "_simlar_score": result.score},
-                id=result.id,
-            )
-            out.append((doc, result.score))
+            mapped = self._result_to_doc(result)
+            if mapped is not None:
+                out.append(mapped)
+        return out
+
+    def _raw_search_batch(
+        self,
+        queries: list[str],
+        k: int,
+        parallel: bool | None = None,
+    ) -> list[list[tuple[Document, float]]]:
+        """Batched sibling of _raw_search: one HelixIndex call for every query,
+        not one call per query. HelixIndex.search already accepts a list of
+        query texts/vectors and returns one ranked list per query.
+        """
+        if not self._texts or not queries:
+            return [[] for _ in queries]
+
+        query_vectors = np.array(self._embedding.embed_documents(list(queries)), dtype=np.float32)
+        effective_k = min(k, len(self._texts))
+        batched_results = cast(
+            list[list[SearchResult]],
+            self._index.search(
+                query_text=list(queries),
+                query_vector=query_vectors,
+                k=effective_k,
+                parallel=self._parallel if parallel is None else parallel,
+            ),
+        )
+
+        out = []
+        for results in batched_results:
+            mapped = [doc_score for r in results if (doc_score := self._result_to_doc(r)) is not None]
+            out.append(mapped)
         return out
 
     # ── VectorStore contract ───────────────────────────────────────────────────
@@ -203,6 +239,26 @@ class SimlarVectorStore(VectorStore):
         **kwargs: Any,
     ) -> list[tuple[Document, float]]:
         return self._raw_search(query, k, kwargs.get("parallel"))
+
+    def similarity_search_batch(
+        self,
+        queries: list[str],
+        k: int = 4,
+        **kwargs: Any,
+    ) -> list[list[Document]]:
+        """Batched sibling of similarity_search: one HelixIndex call for every
+        query in `queries`, not one call per query."""
+        docs = self._raw_search_batch(queries, k, kwargs.get("parallel"))
+        return [[doc for doc, _ in per_query] for per_query in docs]
+
+    def similarity_search_with_score_batch(
+        self,
+        queries: list[str],
+        k: int = 4,
+        **kwargs: Any,
+    ) -> list[list[tuple[Document, float]]]:
+        """Batched sibling of similarity_search_with_score."""
+        return self._raw_search_batch(queries, k, kwargs.get("parallel"))
 
     # ── Factory ────────────────────────────────────────────────────────────────
 

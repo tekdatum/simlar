@@ -72,6 +72,26 @@ class _ReciprocalRankFusion:
         ]
 
 
+# ── Batch-vs-single detection, shared by the composite-index stubs ───────────
+#
+# The real engine's HelixIndex/StreamingHelixIndex.search() accept either one
+# query (query_text: str, query_vector: 1D array) or a batch (query_text:
+# list[str], query_vector: 2D array), returning a flat result list for one
+# query or a list of result lists for a batch. These stubs mirror that shape
+# so batch-method tests (integrations/test_*.py) can run without the real
+# (proprietary) engine installed.
+
+
+def _is_batch_query(query_text, query_vector) -> bool:
+    if isinstance(query_text, list):
+        return True
+    return query_vector is not None and getattr(query_vector, "ndim", 1) == 2
+
+
+def _batch_size(query_text, query_vector) -> int:
+    return len(query_text) if isinstance(query_text, list) else len(query_vector)
+
+
 # ── Stub index cores ──────────────────────────────────────────────────────────
 
 
@@ -216,7 +236,10 @@ class _HelixCore:
     def search(self, query_text=None, query_vector=None, k=None, parallel=False):
         effective_k = k or self._top_k
         n = min(effective_k, len(self._ids))
-        return [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
+        single = [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
+        if _is_batch_query(query_text, query_vector):
+            return [list(single) for _ in range(_batch_size(query_text, query_vector))]
+        return single
 
     def save(self, directory):
         Path(directory).mkdir(parents=True, exist_ok=True)
@@ -323,10 +346,12 @@ class _StreamingCore:
 
     def search(self, query_text=None, query_vector=None, k=10, parallel=False):
         n = min(k if k is not None else 10, self._count)
-        return (
-            np.arange(n, dtype=np.int64),
-            np.array([1.0 / (i + 1) for i in range(n)], dtype=np.float32),
-        )
+        ids = np.arange(n, dtype=np.int64)
+        scores = np.array([1.0 / (i + 1) for i in range(n)], dtype=np.float32)
+        if _is_batch_query(query_text, query_vector):
+            batch_n = _batch_size(query_text, query_vector)
+            return np.tile(ids, (batch_n, 1)), np.tile(scores, (batch_n, 1))
+        return ids, scores
 
     def save(self, directory):
         Path(directory).mkdir(parents=True, exist_ok=True)

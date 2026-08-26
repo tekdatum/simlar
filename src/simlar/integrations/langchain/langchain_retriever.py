@@ -49,3 +49,8 @@ class SimlarRetriever(BaseRetriever):
         run_manager: CallbackManagerForRetrieverRun,
     ) -> list[Document]:
         return self.vector_store.similarity_search(query, k=self.k, parallel=self.parallel)
+
+    def retrieve_batch(self, queries: list[str]) -> list[list[Document]]:
+        """Batched sibling of invoke(): one HelixIndex call for every query in
+        `queries`, not one call per query."""
+        return self.vector_store.similarity_search_batch(queries, k=self.k, parallel=self.parallel)

@@ -412,3 +412,43 @@ class TestSwappableIndexes:
         store.delete_all_documents()
         store.write_documents([_doc("fresh")])
         assert isinstance(store._index._core._shards[0], BM25xIndex)
+
+
+class TestSearchBatch:
+    def test_search_batch_matches_looped_search(self, populated_store):
+        queries = ["cancer", "learning"]
+        embeddings = [UNIT_VEC, UNIT_VEC]
+        batched = populated_store.search_batch(queries, embeddings, top_k=2)
+        looped = [populated_store.search(q, e, top_k=2) for q, e in zip(queries, embeddings)]
+        assert [[d.id for d in docs] for docs in batched] == [
+            [d.id for d in docs] for docs in looped
+        ]
+
+    def test_search_batch_empty_store_returns_empty_per_query(self, store):
+        assert store.search_batch(["a", "b"], [UNIT_VEC, UNIT_VEC]) == [[], []]
+
+    def test_search_batch_mismatched_lengths_raises(self, populated_store):
+        with pytest.raises(ValueError, match="length"):
+            populated_store.search_batch(["a", "b"], [UNIT_VEC])
+
+    def test_search_batch_empty_queries_returns_empty_list(self, populated_store):
+        assert populated_store.search_batch([], []) == []
+
+
+class TestSimlarHybridRetrieverRunBatch:
+    def test_run_batch_returns_documents_key(self, populated_store):
+        retriever = SimlarHybridRetriever(document_store=populated_store)
+        out = retriever.run_batch(
+            queries=["cancer", "learning"], query_embeddings=[UNIT_VEC, UNIT_VEC]
+        )
+        assert "documents" in out
+        assert len(out["documents"]) == 2
+
+    def test_run_batch_matches_looped_run(self, populated_store):
+        retriever = SimlarHybridRetriever(document_store=populated_store)
+        queries = ["cancer", "learning"]
+        batched = retriever.run_batch(queries=queries, query_embeddings=[UNIT_VEC, UNIT_VEC])
+        looped = [retriever.run(query=q, query_embedding=UNIT_VEC)["documents"] for q in queries]
+        assert [[d.id for d in docs] for docs in batched["documents"]] == [
+            [d.id for d in docs] for docs in looped
+        ]

@@ -58,6 +58,28 @@ try:
             )
             return {"documents": documents}
 
+        def run_batch(
+            self,
+            queries: list[str],
+            query_embeddings: list[list[float]],
+            top_k: int | None = None,
+        ) -> dict:
+            """Batched sibling of run(): one StreamingHelixIndex call for every
+            query, not one call per query.
+
+            Args:
+                queries: Raw query strings.
+                query_embeddings: Pre-computed embeddings, one per query, same
+                    order as queries, from an upstream embedder component.
+                top_k: Override the retriever-level top_k for this call.
+            """
+            documents = self.document_store.search_batch(
+                query_texts=queries,
+                query_embeddings=query_embeddings,
+                top_k=top_k or self.top_k,
+            )
+            return {"documents": documents}
+
 except ImportError:
     # haystack-ai not installed — define a plain class with the same interface
     # so the store and retriever can be used standalone without a Haystack Pipeline.
@@ -84,5 +106,18 @@ except ImportError:
                 query_embedding=query_embedding,
                 top_k=top_k or self.top_k,
                 parallel=self.parallel if parallel is None else parallel,
+            )
+            return {"documents": documents}
+
+        def run_batch(
+            self,
+            queries: list[str],
+            query_embeddings: list[list[float]],
+            top_k: int | None = None,
+        ) -> dict:
+            documents = self.document_store.search_batch(
+                query_texts=queries,
+                query_embeddings=query_embeddings,
+                top_k=top_k or self.top_k,
             )
             return {"documents": documents}

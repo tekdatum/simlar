@@ -189,6 +189,68 @@ class SimlarDocumentStore:
 
         return results
 
+    def search_batch(
+        self,
+        query_texts: list[str],
+        query_embeddings: list[list[float]],
+        top_k: int | None = None,
+        filters: dict | None = None,
+    ) -> list[list[Document]]:
+        """Batched sibling of search(): one StreamingHelixIndex call for every
+        query, not one call per query.
+
+        Args:
+            query_texts: Raw query strings, one per query.
+            query_embeddings: Pre-computed query vectors, one per query, same
+                order as query_texts.
+            top_k: Override the store-level top_k for every query in this call.
+            filters: Optional Haystack filter dict applied post-retrieval.
+
+        Returns:
+            One list of ranked Documents per query, same order as query_texts.
+        """
+        if len(query_texts) != len(query_embeddings):
+            raise ValueError(
+                f"query_texts length {len(query_texts)} != "
+                f"query_embeddings length {len(query_embeddings)}"
+            )
+        if not self._corpus or not query_texts:
+            return [[] for _ in query_texts]
+
+        k = top_k or self._top_k
+        fetch_k = min(len(self._corpus), k * 10) if (self._deleted_positions or filters) else k
+        query_vectors = np.array(query_embeddings, dtype=np.float32)
+
+        batched_ids, batched_scores = self._index.search(
+            query_text=list(query_texts), query_vector=query_vectors, k=fetch_k
+        )
+
+        out: list[list[Document]] = []
+        for ids, scores in zip(batched_ids, batched_scores, strict=False):
+            results: list[Document] = []
+            for doc_id, score in zip(ids, scores, strict=False):
+                pos = int(doc_id)
+                if pos in self._deleted_positions:
+                    continue
+                orig = self._haystack_docs[pos]
+                if filters and not self._matches_filters(orig, filters):
+                    continue
+                results.append(
+                    Document(
+                        content=self._corpus[pos],
+                        meta={
+                            **orig.meta,
+                            "rank": len(results) + 1,
+                            "doc_id": pos,
+                            "score": float(score),
+                        },
+                    )
+                )
+                if len(results) >= k:
+                    break
+            out.append(results)
+        return out
+
     # ── Delete ────────────────────────────────────────────────────────────────
 
     def delete_documents(self, document_ids: list[str]) -> None:

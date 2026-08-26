@@ -115,3 +115,57 @@ class TestSwappableIndexes:
             texts=_TEXTS, ids=_IDS, vectors=_VECTORS, text_index=BM25xIndex()
         )
         assert isinstance(store.client.text_index, BM25xIndex)
+
+
+class TestRetrieverBatch:
+    def test_retrieve_batch_matches_looped_retrieve(self, retriever):
+        queries = ["cancer", "learning", "immunotherapy"]
+        batched = retriever.retrieve_batch(queries)
+        looped = [retriever.retrieve(q) for q in queries]
+        assert [[n.node.node_id for n in nodes] for nodes in batched] == [
+            [n.node.node_id for n in nodes] for nodes in looped
+        ]
+
+    def test_retrieve_batch_empty_returns_empty_list(self, retriever):
+        assert retriever.retrieve_batch([]) == []
+
+
+class TestVectorStoreQueryBatch:
+    def _store(self):
+        from llama_index.core.vector_stores.types import VectorStoreQuery
+
+        from simlar.integrations.llama_index.simlar_vector_store import SimlarVectorStore
+
+        store = SimlarVectorStore.from_texts(texts=_TEXTS, ids=_IDS, vectors=_VECTORS)
+        return store, VectorStoreQuery
+
+    def test_query_batch_matches_looped_query(self):
+        store, VectorStoreQuery = self._store()
+        embeddings = [_EMBED.get_query_embedding(q) for q in ["cancer", "learning"]]
+        queries = [
+            VectorStoreQuery(query_str="cancer", query_embedding=embeddings[0], similarity_top_k=2),
+            VectorStoreQuery(query_str="learning", query_embedding=embeddings[1], similarity_top_k=2),
+        ]
+        batched = store.query_batch(queries)
+        looped = [store.query(q) for q in queries]
+        assert [r.ids for r in batched] == [r.ids for r in looped]
+
+    def test_query_batch_requires_query_embedding(self):
+        store, VectorStoreQuery = self._store()
+        with pytest.raises(ValueError, match="query_embedding"):
+            store.query_batch([VectorStoreQuery(query_str="cancer", similarity_top_k=2)])
+
+    def test_query_batch_rejects_mixed_top_k(self):
+        store, VectorStoreQuery = self._store()
+        embedding = _EMBED.get_query_embedding("cancer")
+        with pytest.raises(ValueError, match="similarity_top_k"):
+            store.query_batch(
+                [
+                    VectorStoreQuery(query_str="a", query_embedding=embedding, similarity_top_k=1),
+                    VectorStoreQuery(query_str="b", query_embedding=embedding, similarity_top_k=2),
+                ]
+            )
+
+    def test_query_batch_empty_returns_empty_list(self):
+        store, _VectorStoreQuery = self._store()
+        assert store.query_batch([]) == []

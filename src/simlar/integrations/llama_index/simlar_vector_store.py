@@ -264,6 +264,57 @@ class SimlarVectorStore(BasePydanticVectorStore):  # type: ignore[misc]
             ids=[r.id for r in results],
         )
 
+    def query_batch(self, queries: list[VectorStoreQuery], **kwargs: Any) -> list[VectorStoreQueryResult]:
+        """Batched sibling of query(): one HelixIndex call for every query in
+        `queries`, not one call per query.
+
+        Every query must have ``query_embedding`` set, same as query(). All
+        queries in the batch must agree on whether ``query_str`` is provided
+        (all-text or all-vector-only) — HelixIndex takes one query_text mode
+        per batched call — and share the same ``similarity_top_k``.
+        """
+        if not queries:
+            return []
+        if any(q.query_embedding is None for q in queries):
+            raise ValueError("query.query_embedding is required for every query in query_batch.")
+        query_texts = [q.query_str for q in queries]
+        if all(t is not None for t in query_texts):
+            text_arg: list[str] | None = query_texts
+        elif all(t is None for t in query_texts):
+            text_arg = None
+        else:
+            raise ValueError(
+                "query_batch requires every query to either provide query_str or omit it — "
+                "a mix of the two isn't supported in one batched HelixIndex call."
+            )
+        top_ks = {q.similarity_top_k for q in queries}
+        if len(top_ks) > 1:
+            raise ValueError(f"query_batch requires a single similarity_top_k, got {sorted(top_ks)}")
+        query_vectors = np.array([q.query_embedding for q in queries], dtype=np.float32)
+        batched_results = self._index.search(
+            query_text=text_arg,
+            query_vector=query_vectors,
+            k=top_ks.pop(),
+        )
+        out = []
+        for results in batched_results:
+            nodes = [
+                TextNode(
+                    text=self._id_to_text.get(r.id, ""),
+                    id_=r.id,
+                    metadata={"rank": r.rank, "score": r.score},
+                )
+                for r in results
+            ]
+            out.append(
+                VectorStoreQueryResult(
+                    nodes=nodes,
+                    similarities=[r.score for r in results],
+                    ids=[r.id for r in results],
+                )
+            )
+        return out
+
     def persist(
         self,
         persist_path: str,

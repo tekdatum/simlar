@@ -102,3 +102,47 @@ class TestSwappableIndexes:
             text_index=BM25xIndex(),
         )
         assert isinstance(s._index.text_index, BM25xIndex)
+
+
+class TestBatchSearch:
+    def test_batch_matches_looped_single_query(self, store):
+        store.add_texts(
+            ["cancer treatment", "machine learning", "immunotherapy"],
+            ids=["doc_0", "doc_1", "doc_2"],
+        )
+        queries = ["cancer", "learning", "immunotherapy"]
+        batched = store.similarity_search_batch(queries, k=2)
+        looped = [store.similarity_search(q, k=2) for q in queries]
+        assert [[d.id for d in docs] for docs in batched] == [
+            [d.id for d in docs] for docs in looped
+        ]
+
+    def test_batch_with_score_matches_looped_single_query(self, store):
+        store.add_texts(["a", "b", "c"], ids=["x", "y", "z"])
+        queries = ["a", "b"]
+        batched = store.similarity_search_with_score_batch(queries, k=2)
+        looped = [store.similarity_search_with_score(q, k=2) for q in queries]
+        assert [[(d.id, s) for d, s in docs] for docs in batched] == [
+            [(d.id, s) for d, s in docs] for docs in looped
+        ]
+
+    def test_batch_empty_store_returns_empty_per_query(self, store):
+        assert store.similarity_search_batch(["a", "b"], k=2) == [[], []]
+
+    def test_batch_empty_queries_returns_empty_list(self, store):
+        store.add_texts(["a"], ids=["x"])
+        assert store.similarity_search_batch([], k=2) == []
+
+    def test_retriever_retrieve_batch_matches_looped_invoke(self, store):
+        from simlar.integrations.langchain.langchain_retriever import SimlarRetriever
+        from simlar.integrations.langchain.simlar_vector_store import SimlarVectorStore  # noqa: F401
+
+        SimlarRetriever.model_rebuild()
+        store.add_texts(["cancer treatment", "machine learning"], ids=["doc_0", "doc_1"])
+        retriever = SimlarRetriever(vector_store=store, k=2)
+        queries = ["cancer", "learning"]
+        batched = retriever.retrieve_batch(queries)
+        looped = [retriever.invoke(q) for q in queries]
+        assert [[d.id for d in docs] for docs in batched] == [
+            [d.id for d in docs] for docs in looped
+        ]

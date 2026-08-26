@@ -63,7 +63,7 @@ class BM25xIndex(TextIndex):
         self._core.add(corpus)
         self._ids = [str(i) for i in range(len(corpus))]
 
-    def add(self, ids: list[str], texts: list[str]) -> None:
+    def add(self, ids: list[str], texts: list[str], parallel: bool = True) -> None:
         existing = set(self._ids)
         seen_in_batch: set[str] = set()
         for doc_id in ids:

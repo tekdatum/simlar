@@ -211,3 +211,26 @@ class SimlarRetriever(BaseRetriever):  # type: ignore[misc]
     async def _aretrieve(self, query_bundle: QueryBundle) -> list[NodeWithScore]:
         # get_query_embedding is synchronous in all current LlamaIndex embedders
         return self._retrieve(query_bundle)
+
+    def retrieve_batch(self, queries: list[str]) -> list[list[NodeWithScore]]:
+        """Batched sibling of retrieve(): one HelixIndex call for every query in
+        `queries`, not one call per query.
+
+        Queries are still embedded one at a time (LlamaIndex's BaseEmbedding has
+        no get_query_embedding_batch — only get_text_embedding_batch, which
+        applies document-side transforms some models treat differently from
+        query-side ones) — the batching win here is the HelixIndex search call.
+        """
+        if not queries:
+            return []
+        query_vectors = np.array(
+            [self._embed_model.get_query_embedding(q) for q in queries],
+            dtype=np.float32,
+        )
+        batched_results = self._index.search(
+            query_text=list(queries),
+            query_vector=query_vectors,
+            k=self._k,
+            parallel=self._parallel,
+        )
+        return [self._to_nodes(results) for results in batched_results]
