@@ -53,35 +53,37 @@ class HelixIndex(CompositeIndex):
         ids: list[str],
         texts: list[str] | None = None,
         vectors: np.ndarray | None = None,
+        parallel: bool = True,
     ) -> None:
-        self._core.add(ids, texts, vectors)
+        self._core.add(ids, texts, vectors, parallel)
 
     def search(
         self,
         query_text: str | list[str] | None = None,
         query_vector: np.ndarray | None = None,
         k: int | None = None,
-        parallel: bool = False,
+        parallel: bool = True,
+        batch_size: int | None = None,
     ) -> list[SearchResult] | list[list[SearchResult]]:
-        return self._core.search(query_text, query_vector, k, parallel)
+        return self._core.search(query_text, query_vector, k, parallel, batch_size)
 
     def fit(
         self,
         corpus: list,
         vectors: np.ndarray,
-        parallel: bool = False,
+        parallel: bool = True,
         **kwargs,
     ) -> None:
         params = kwargs.pop("params", None)
         self._core.fit(corpus, vectors, parallel, params)
 
-    def save(self, directory: str) -> None:
-        self._core.save(directory)
+    def save(self, directory: str, base_dir: str | None = None) -> None:
+        self._core.save(directory, base_dir)
 
     @classmethod
-    def load(cls, directory: str) -> HelixIndex:
+    def load(cls, directory: str, base_dir: str | None = None) -> HelixIndex:
         obj = cls.__new__(cls)
-        obj._core = _HelixCore.load(directory)
+        obj._core = _HelixCore.load(directory, base_dir)
         return obj
 
     # ── Metadata ──────────────────────────────────────────────────────────────
@@ -118,9 +120,13 @@ class HelixIndex(CompositeIndex):
     def vector_index(self) -> VectorIndex:
         return self._core.vector_index
 
+    @property
+    def ids(self) -> list[str]:
+        return self.text_index.ids
+
     def __repr__(self) -> str:
         return (
             f"HelixIndex(text={self._core.text_index.index_type!r}, "
             f"vector={self._core.vector_index.index_type!r}, "
-            f"text_k={self._core._text_k}, vector_k={self._core._vector_k})"
+            f"text_k={self._core.text_k}, vector_k={self._core.vector_k})"
         )

@@ -26,11 +26,11 @@ class Index(ABC):
     """Minimal contract: every index can persist and report its type and size."""
 
     @abstractmethod
-    def save(self, path: str) -> None: ...
+    def save(self, path: str, base_dir: str | None = None) -> None: ...
 
     @classmethod
     @abstractmethod
-    def load(cls, path: str) -> Index: ...
+    def load(cls, path: str, base_dir: str | None = None) -> Index: ...
 
     @property
     @abstractmethod
@@ -44,6 +44,10 @@ class Index(ABC):
     @abstractmethod
     def is_trained(self) -> bool: ...
 
+    @property
+    @abstractmethod
+    def ids(self) -> list[str]: ...
+
 
 # ── Text index ────────────────────────────────────────────────────────────────
 
@@ -54,8 +58,12 @@ class TextIndex(Index):
     # ── Public API ─────────────────────────────────────────────────────────────
 
     @abstractmethod
-    def add(self, ids: list[str], texts: list[str]) -> None:
-        """Append new documents. Raises ValueError on duplicate IDs; use update() to replace."""
+    def add(self, ids: list[str], texts: list[str], parallel: bool = False) -> None:
+        """Append new documents. Raises ValueError on duplicate IDs; use update() to replace.
+
+        `parallel` is accepted for parity with the vector side; text indexing
+        is single-threaded in every backend.
+        """
 
     @abstractmethod
     def update(self, ids: list[str], texts: list[str]) -> None:
@@ -66,7 +74,10 @@ class TextIndex(Index):
         """Remove documents by ID, rebuilding internal structures."""
 
     @abstractmethod
-    def search(self, query: str, k: int) -> list[SearchResult]: ...
+    def search(
+        self, query: str | list[str], k: int, parallel: bool = False, batch_size: int | None = None
+    ) -> list[SearchResult] | list[list[SearchResult]]:
+        """Rank documents against query. `parallel` threads a batch of queries."""
 
     # ── Internal ───────────────────────────────────────────────────────────────
 
@@ -95,10 +106,14 @@ class VectorIndex(Index):
     # ── Public API ─────────────────────────────────────────────────────────────
 
     @abstractmethod
-    def add(self, ids: list[str], vectors: np.ndarray) -> None: ...
+    def add(self, ids: list[str], vectors: np.ndarray, parallel: bool = False) -> None:
+        """Append new vectors. `parallel` threads their quantization."""
 
     @abstractmethod
-    def search(self, query: np.ndarray, k: int) -> list[SearchResult]: ...
+    def search(
+        self, query: np.ndarray, k: int, parallel: bool = False, batch_size: int | None = None
+    ) -> list[SearchResult]:
+        """Rank documents against query. `parallel` threads a batch of queries."""
 
     @abstractmethod
     def update(self, ids: list[str], vectors: np.ndarray) -> None:
@@ -151,10 +166,18 @@ class CompositeIndex(Index):
     @abstractmethod
     def search(
         self,
-        query_text: str | None = None,
+        query_text: str | list[str] | None = None,
         query_vector: np.ndarray | None = None,
         k: int = 10,
-    ) -> list[SearchResult]: ...
+        parallel: bool = False,
+        batch_size: int | None = None,
+    ) -> list[SearchResult] | list[list[SearchResult]]:
+        """Search every sub-index and fuse. `parallel` threads a batch of queries.
+
+        A single query returns `list[SearchResult]`; a batch (e.g. a list of
+        query texts, or a 2D array of query vectors) returns one such list
+        per query, in order — the same batch contract as `TextIndex.search`.
+        """
 
     @abstractmethod
     def fit(
@@ -172,10 +195,8 @@ class CompositeIndex(Index):
 
 @runtime_checkable
 class FusionStrategy(Protocol):
-    """Combines N result lists into a single ranked list."""
-
     def __call__(
         self,
-        results: list[list[SearchResult]],
+        results: list[tuple[np.ndarray, np.ndarray]],
         k: int,
-    ) -> list[SearchResult]: ...
+    ) -> tuple[np.ndarray, np.ndarray]: ...

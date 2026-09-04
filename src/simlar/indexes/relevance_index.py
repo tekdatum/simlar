@@ -30,13 +30,11 @@ class RelevanceIndex(TextIndex):
 
     # ── Public contract ───────────────────────────────────────────────────────
 
-    def fit(self, corpus: list[str], parallel: bool = False, **kwargs: object) -> None:
-
+    def fit(self, corpus: list[str], parallel: bool = True, **kwargs: object) -> None:
         self._core.fit(corpus, parallel)
 
-    def add(self, ids: list[str], texts: list[str]) -> None:
-
-        self._core.add(ids, texts)
+    def add(self, ids: list[str], texts: list[str], parallel: bool = True) -> None:
+        self._core.add(ids, texts, parallel)
 
     def update(self, ids: list[str], texts: list[str]) -> None:
         self._core.update(ids, texts)
@@ -44,9 +42,14 @@ class RelevanceIndex(TextIndex):
     def delete(self, ids: list[str]) -> None:
         self._core.delete(ids)
 
-    def search(self, query: str, k: int = 10) -> list[SearchResult]:
-
-        return self._core.search(query, k)
+    def search(
+        self,
+        query: str | list[str],
+        k: int = 10,
+        parallel: bool = True,
+        batch_size: int | None = None,
+    ) -> list[SearchResult] | list[list[SearchResult]]:
+        return self._core.search(query, k, parallel, batch_size)
 
     def search_raw(
         self,
@@ -54,18 +57,15 @@ class RelevanceIndex(TextIndex):
         k: int,
         parallel: bool = False,
     ) -> tuple[np.ndarray, np.ndarray]:
-
         return self._core.search_raw(queries, k, parallel)
 
-    def save(self, directory: str) -> None:
-
-        self._core.save(directory)
+    def save(self, directory: str, base_dir: str | None = None) -> None:
+        self._core.save(directory, base_dir)
 
     @classmethod
-    def load(cls, directory: str) -> RelevanceIndex:
-
+    def load(cls, directory: str, base_dir: str | None = None) -> RelevanceIndex:
         obj = cls.__new__(cls)
-        obj._core = _RelevanceCore.load(directory)
+        obj._core = _RelevanceCore.load(directory, base_dir)
         return obj
 
     # ── Properties ────────────────────────────────────────────────────────────
@@ -76,7 +76,6 @@ class RelevanceIndex(TextIndex):
 
     @property
     def is_trained(self) -> bool:
-
         return self._core.is_trained
 
     @property
