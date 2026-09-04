@@ -42,7 +42,13 @@ class RelevanceIndex(TextIndex):
     def delete(self, ids: list[str]) -> None:
         self._core.delete(ids)
 
-    def search(self, query: str | list[str], k: int = 10, parallel: bool = True, batch_size: int | None = None) -> 	list[SearchResult] | list[list[SearchResult]]:
+    def search(
+        self,
+        query: str | list[str],
+        k: int = 10,
+        parallel: bool = True,
+        batch_size: int | None = None,
+    ) -> list[SearchResult] | list[list[SearchResult]]:
         return self._core.search(query, k, parallel, batch_size)
 
     def search_raw(

@@ -74,7 +74,9 @@ class TextIndex(Index):
         """Remove documents by ID, rebuilding internal structures."""
 
     @abstractmethod
-    def search(self, query: str | list[str], k: int, parallel: bool = False, batch_size: int | None = None) -> list[SearchResult] | list[list[SearchResult]]:
+    def search(
+        self, query: str | list[str], k: int, parallel: bool = False, batch_size: int | None = None
+    ) -> list[SearchResult] | list[list[SearchResult]]:
         """Rank documents against query. `parallel` threads a batch of queries."""
 
     # ── Internal ───────────────────────────────────────────────────────────────
@@ -108,7 +110,9 @@ class VectorIndex(Index):
         """Append new vectors. `parallel` threads their quantization."""
 
     @abstractmethod
-    def search(self, query: np.ndarray, k: int, parallel: bool = False, batch_size: int | None = None) -> list[SearchResult]:
+    def search(
+        self, query: np.ndarray, k: int, parallel: bool = False, batch_size: int | None = None
+    ) -> list[SearchResult]:
         """Rank documents against query. `parallel` threads a batch of queries."""
 
     @abstractmethod
