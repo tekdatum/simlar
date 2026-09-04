@@ -71,16 +71,43 @@ class StreamingHelixIndex:
         query_vector: np.ndarray,
         k: int | None = None,
         parallel: bool = False,
+        batch_size: int | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
-        return self._core.search(query_text, query_vector, k, parallel)
+        return self._core.search(query_text, query_vector, k, parallel, batch_size)
 
     # ── Persistence ───────────────────────────────────────────────────────────
 
-    def save(self, directory: str) -> None:
-        self._core.save(directory)
+    def save(self, directory: str, base_dir: str | None = None) -> None:
+        self._core.save(directory, base_dir)
 
     @classmethod
-    def load(cls, directory: str) -> StreamingHelixIndex:
+    def load(cls, directory: str, base_dir: str | None = None) -> StreamingHelixIndex:
         obj = cls.__new__(cls)
-        obj._core = _StreamingCore.load(directory)
+        obj._core = _StreamingCore.load(directory, base_dir)
         return obj
+
+    # ── Metadata ──────────────────────────────────────────────────────────────
+
+    @property
+    def size(self) -> int:
+        return self._core.size
+
+    @property
+    def n_shards(self) -> int:
+        return self._core.n_shards
+
+    @property
+    def is_trained(self) -> bool:
+        return self._core.is_trained
+
+    @property
+    def index_type(self) -> str:
+        return self._core.index_type
+
+    @property
+    def boundaries(self) -> np.ndarray | None:
+        return self._core.boundaries
+
+    @property
+    def fit_values(self) -> np.ndarray | None:
+        return self._core.fit_values

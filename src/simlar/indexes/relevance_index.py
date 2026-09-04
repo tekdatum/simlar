@@ -42,8 +42,8 @@ class RelevanceIndex(TextIndex):
     def delete(self, ids: list[str]) -> None:
         self._core.delete(ids)
 
-    def search(self, query: str, k: int = 10, parallel: bool = True) -> list[SearchResult]:
-        return self._core.search(query, k, parallel)
+    def search(self, query: str | list[str], k: int = 10, parallel: bool = True, batch_size: int | None = None) -> 	list[SearchResult] | list[list[SearchResult]]:
+        return self._core.search(query, k, parallel, batch_size)
 
     def search_raw(
         self,
@@ -53,13 +53,13 @@ class RelevanceIndex(TextIndex):
     ) -> tuple[np.ndarray, np.ndarray]:
         return self._core.search_raw(queries, k, parallel)
 
-    def save(self, directory: str) -> None:
-        self._core.save(directory)
+    def save(self, directory: str, base_dir: str | None = None) -> None:
+        self._core.save(directory, base_dir)
 
     @classmethod
-    def load(cls, directory: str) -> RelevanceIndex:
+    def load(cls, directory: str, base_dir: str | None = None) -> RelevanceIndex:
         obj = cls.__new__(cls)
-        obj._core = _RelevanceCore.load(directory)
+        obj._core = _RelevanceCore.load(directory, base_dir)
         return obj
 
     # ── Properties ────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from simlar.contracts import TextIndex, VectorIndex, _Parameters
+from simlar.contracts import TextIndex, VectorIndex
 
 class StreamingHybridIndex:
     """
@@ -20,13 +20,13 @@ class StreamingHybridIndex:
         self,
         text_index_cls: type[TextIndex] | None = None,
         vector_index_cls: type[VectorIndex] | None = None,
-        text_k: int = 5000,
-        vector_k: int = 1000,
+        text_k: int | None = None,
+        vector_k: int | None = None,
         top_k: int = 100,
         alpha_text: float = 0.10,
         alpha_vector: float = 1.0,
         rrf_k: int = 2,
-        n_candidates: int = 5000,
+        n_candidates: int | None = None,
     ) -> None: ...
     def add_batch(self, corpus: list[str], vectors: np.ndarray, parallel: bool = False) -> None: ...
     async def add_batch_async(
@@ -38,11 +38,11 @@ class StreamingHybridIndex:
         query_vector: np.ndarray,
         k: int | None = None,
         parallel: bool = False,
+        batch_size: int | None = None,
     ) -> tuple[np.ndarray, np.ndarray]: ...
-    def fit(self, corpus: list, vectors: np.ndarray, **kwargs: object) -> None: ...
-    def save(self, directory: str) -> None: ...
+    def save(self, directory: str, base_dir: str | None = None) -> None: ...
     @classmethod
-    def load(cls, directory: str) -> StreamingHybridIndex: ...
+    def load(cls, directory: str, base_dir: str | None = None) -> StreamingHybridIndex: ...
     @property
     def size(self) -> int: ...
     @property
@@ -55,5 +55,3 @@ class StreamingHybridIndex:
     def boundaries(self) -> np.ndarray | None: ...
     @property
     def fit_values(self) -> np.ndarray | None: ...
-    @property
-    def _params(self) -> _Parameters | None: ...

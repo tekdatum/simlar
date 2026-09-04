@@ -26,11 +26,11 @@ class Index(ABC):
     """Minimal contract: every index can persist and report its type and size."""
 
     @abstractmethod
-    def save(self, path: str) -> None: ...
+    def save(self, path: str, base_dir: str | None = None) -> None: ...
 
     @classmethod
     @abstractmethod
-    def load(cls, path: str) -> Index: ...
+    def load(cls, path: str, base_dir: str | None = None) -> Index: ...
 
     @property
     @abstractmethod
@@ -74,7 +74,7 @@ class TextIndex(Index):
         """Remove documents by ID, rebuilding internal structures."""
 
     @abstractmethod
-    def search(self, query: str, k: int, parallel: bool = False) -> list[SearchResult]:
+    def search(self, query: str | list[str], k: int, parallel: bool = False, batch_size: int | None = None) -> list[SearchResult] | list[list[SearchResult]]:
         """Rank documents against query. `parallel` threads a batch of queries."""
 
     # ── Internal ───────────────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ class VectorIndex(Index):
         """Append new vectors. `parallel` threads their quantization."""
 
     @abstractmethod
-    def search(self, query: np.ndarray, k: int, parallel: bool = False) -> list[SearchResult]:
+    def search(self, query: np.ndarray, k: int, parallel: bool = False, batch_size: int | None = None) -> list[SearchResult]:
         """Rank documents against query. `parallel` threads a batch of queries."""
 
     @abstractmethod
@@ -162,12 +162,18 @@ class CompositeIndex(Index):
     @abstractmethod
     def search(
         self,
-        query_text: str | None = None,
+        query_text: str | list[str] | None = None,
         query_vector: np.ndarray | None = None,
         k: int = 10,
         parallel: bool = False,
-    ) -> list[SearchResult]:
-        """Search every sub-index and fuse. `parallel` threads a batch of queries."""
+        batch_size: int | None = None,
+    ) -> list[SearchResult] | list[list[SearchResult]]:
+        """Search every sub-index and fuse. `parallel` threads a batch of queries.
+
+        A single query returns `list[SearchResult]`; a batch (e.g. a list of
+        query texts, or a 2D array of query vectors) returns one such list
+        per query, in order — the same batch contract as `TextIndex.search`.
+        """
 
     @abstractmethod
     def fit(

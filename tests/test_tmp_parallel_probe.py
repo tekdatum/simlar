@@ -22,7 +22,14 @@ def spy():
 
         def make(orig=orig, label=label):
             def f(self, *a, **kw):
-                p = kw.get("parallel", a[-1] if a and isinstance(a[-1], bool) else "MISSING")
+                if "parallel" in kw:
+                    p = kw["parallel"]
+                else:
+                    # `parallel` isn't always the last positional arg anymore
+                    # (e.g. `_HelixCore.search`'s trailing `batch_size`), so
+                    # scan from the end for the last bool rather than assuming
+                    # a fixed position.
+                    p = next((x for x in reversed(a) if isinstance(x, bool)), "MISSING")
                 SEEN.append((label, p))
                 return orig(self, *a, **kw)
 

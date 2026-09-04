@@ -65,7 +65,7 @@ class TestLoadFromDirectory:
                 pass
 
             @classmethod
-            def load(cls, directory):
+            def load(cls, directory, base_dir=None):
                 loaded.append(directory)
                 return cls()
 

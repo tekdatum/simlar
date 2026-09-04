@@ -14,8 +14,9 @@ Usage::
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import TYPE_CHECKING
+
+from simlar_engine._persistence import resolve_directory
 
 if TYPE_CHECKING:
     from simlar.contracts import Index
@@ -40,16 +41,16 @@ def build(name: str, **kwargs) -> Index:
     return _REGISTRY[name](**kwargs)
 
 
-def load_from_directory(directory: str) -> Index:
+def load_from_directory(directory: str, base_dir: str | None = None) -> Index:
     """Load any registered index from its saved directory.
 
     Reads ``config.json`` → ``index_type`` field → calls the matching ``cls.load()``.
     """
-    config_path = Path(directory) / "config.json"
-    meta = json.loads(config_path.read_text())
+    d = resolve_directory(directory, base_dir)
+    meta = json.loads((d / "config.json").read_text())
     index_type = meta["index_type"]
     if index_type not in _REGISTRY:
         raise KeyError(
             f"Saved index type {index_type!r} is not in registry. Available: {sorted(_REGISTRY)}"
         )
-    return _REGISTRY[index_type].load(directory)
+    return _REGISTRY[index_type].load(directory, base_dir=base_dir)
