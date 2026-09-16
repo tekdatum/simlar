@@ -3,7 +3,7 @@
 All notable changes to **simlar** (the open-source wrapper) are documented here.
 Dates are in YYYY-MM-DD format.
 
-## [Unreleased]
+## [1.1.0] — 2026-09-16
 
 ### Fixed
 - `LookupIndex.search_raw()` defaulted `parallel` to `True`, inconsistent with
