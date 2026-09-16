@@ -64,6 +64,7 @@ VECS = np.ones((2, 8), dtype=np.float32)
 
 
 def test_langchain():
+    pytest.importorskip("langchain_core", reason="langchain-core not installed")
     from simlar.integrations.langchain.langchain_retriever import SimlarRetriever
     from simlar.integrations.langchain.simlar_vector_store import SimlarVectorStore
 
@@ -78,6 +79,7 @@ def test_langchain():
 
 
 def test_haystack():
+    pytest.importorskip("haystack", reason="haystack-ai not installed")
     from haystack import Document
 
     from simlar.integrations.haystack.simlar_document_store import SimlarDocumentStore
@@ -96,6 +98,7 @@ def test_haystack():
 
 
 def test_llamaindex():
+    pytest.importorskip("llama_index.core", reason="llama-index-core not installed")
     from llama_index.core.vector_stores.types import VectorStoreQuery
 
     from simlar.integrations.llama_index.simlar_retriever import SimlarRetriever
