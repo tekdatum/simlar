@@ -48,7 +48,7 @@ class StreamingHelixIndex:
         self,
         corpus: list[str],
         vectors: np.ndarray,
-        parallel: bool = False,
+        parallel: bool = True,
     ) -> None:
         self._core.add_batch(corpus, vectors, parallel)
 
@@ -56,7 +56,7 @@ class StreamingHelixIndex:
         self,
         corpus: list[str],
         vectors: np.ndarray,
-        parallel: bool = False,
+        parallel: bool = True,
     ) -> None:
         import asyncio
 
@@ -70,7 +70,7 @@ class StreamingHelixIndex:
         query_text: str | list[str],
         query_vector: np.ndarray,
         k: int | None = None,
-        parallel: bool = False,
+        parallel: bool = True,
         batch_size: int | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         return self._core.search(query_text, query_vector, k, parallel, batch_size)

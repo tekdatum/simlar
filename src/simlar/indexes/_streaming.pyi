@@ -28,16 +28,16 @@ class StreamingHybridIndex:
         rrf_k: int = 2,
         n_candidates: int | None = None,
     ) -> None: ...
-    def add_batch(self, corpus: list[str], vectors: np.ndarray, parallel: bool = False) -> None: ...
+    def add_batch(self, corpus: list[str], vectors: np.ndarray, parallel: bool = True) -> None: ...
     async def add_batch_async(
-        self, corpus: list[str], vectors: np.ndarray, parallel: bool = False
+        self, corpus: list[str], vectors: np.ndarray, parallel: bool = True
     ) -> None: ...
     def search(
         self,
         query_text: str | list[str],
         query_vector: np.ndarray,
         k: int | None = None,
-        parallel: bool = False,
+        parallel: bool = True,
         batch_size: int | None = None,
     ) -> tuple[np.ndarray, np.ndarray]: ...
     def save(self, directory: str, base_dir: str | None = None) -> None: ...

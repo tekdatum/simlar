@@ -55,7 +55,7 @@ class RelevanceIndex(TextIndex):
         self,
         queries: str | list[str],
         k: int,
-        parallel: bool = False,
+        parallel: bool = True,
     ) -> tuple[np.ndarray, np.ndarray]:
         return self._core.search_raw(queries, k, parallel)
 
