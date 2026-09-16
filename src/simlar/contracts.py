@@ -58,7 +58,7 @@ class TextIndex(Index):
     # ── Public API ─────────────────────────────────────────────────────────────
 
     @abstractmethod
-    def add(self, ids: list[str], texts: list[str], parallel: bool = False) -> None:
+    def add(self, ids: list[str], texts: list[str], parallel: bool = True) -> None:
         """Append new documents. Raises ValueError on duplicate IDs; use update() to replace.
 
         `parallel` is accepted for parity with the vector side; text indexing
@@ -75,14 +75,14 @@ class TextIndex(Index):
 
     @abstractmethod
     def search(
-        self, query: str | list[str], k: int, parallel: bool = False, batch_size: int | None = None
+        self, query: str | list[str], k: int, parallel: bool = True, batch_size: int | None = None
     ) -> list[SearchResult] | list[list[SearchResult]]:
         """Rank documents against query. `parallel` threads a batch of queries."""
 
     # ── Internal ───────────────────────────────────────────────────────────────
 
     @abstractmethod
-    def fit(self, corpus: list[str], parallel: bool = False, **kwargs) -> None:
+    def fit(self, corpus: list[str], parallel: bool = True, **kwargs) -> None:
         """Build the model from a raw corpus list. Called by add() and HelixIndex."""
 
     @abstractmethod
@@ -90,7 +90,7 @@ class TextIndex(Index):
         self,
         queries: str | list[str],
         k: int,
-        parallel: bool = False,
+        parallel: bool = True,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Return (ids, scores) shaped (n_queries, k), int64/float64.
         Used internally by HelixIndex._search_raw().
@@ -106,12 +106,12 @@ class VectorIndex(Index):
     # ── Public API ─────────────────────────────────────────────────────────────
 
     @abstractmethod
-    def add(self, ids: list[str], vectors: np.ndarray, parallel: bool = False) -> None:
+    def add(self, ids: list[str], vectors: np.ndarray, parallel: bool = True) -> None:
         """Append new vectors. `parallel` threads their quantization."""
 
     @abstractmethod
     def search(
-        self, query: np.ndarray, k: int, parallel: bool = False, batch_size: int | None = None
+        self, query: np.ndarray, k: int, parallel: bool = True, batch_size: int | None = None
     ) -> list[SearchResult]:
         """Rank documents against query. `parallel` threads a batch of queries."""
 
@@ -125,7 +125,7 @@ class VectorIndex(Index):
     def fit(
         self,
         embeddings: np.ndarray,
-        parallel: bool = False,
+        parallel: bool = True,
         params: _Parameters | None = None,
         **kwargs,
     ) -> None:
@@ -137,7 +137,7 @@ class VectorIndex(Index):
         vectors: np.ndarray,
         k: int,
         candidates: np.ndarray | None = None,
-        parallel: bool = False,
+        parallel: bool = True,
         n_candidates: int | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Return (ids, distances) shaped (n_queries, k), int64/float64.
@@ -169,7 +169,7 @@ class CompositeIndex(Index):
         query_text: str | list[str] | None = None,
         query_vector: np.ndarray | None = None,
         k: int = 10,
-        parallel: bool = False,
+        parallel: bool = True,
         batch_size: int | None = None,
     ) -> list[SearchResult] | list[list[SearchResult]]:
         """Search every sub-index and fuse. `parallel` threads a batch of queries.
@@ -184,7 +184,7 @@ class CompositeIndex(Index):
         self,
         corpus: list,
         vectors: np.ndarray,
-        parallel: bool = False,
+        parallel: bool = True,
         **kwargs,
     ) -> None:
         """Internal: build all sub-indexes. Used by StreamingHybridIndex shards."""
