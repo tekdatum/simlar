@@ -30,21 +30,21 @@ class HelixIndex(CompositeIndex):
 
     def __init__(
         self,
+        *,
         text_index: TextIndex | None = None,
         vector_index: VectorIndex | None = None,
         fusion: FusionStrategy | None = None,
-        text_k: int = 5000,
-        vector_k: int = 1000,
+        text_k: int | None = None,
+        vector_k: int | None = None,
         top_k: int = 100,
         alpha_text: float = 0.10,
         alpha_vector: float = 1.0,
-        rrf_k: int = 2,
     ) -> None: ...
     def fit(
         self,
         corpus: list[str],
         vectors: np.ndarray,
-        parallel: bool = False,
+        parallel: bool = True,
         params: _Parameters | None = None,
         **kwargs: object,
     ) -> None: ...
@@ -53,17 +53,19 @@ class HelixIndex(CompositeIndex):
         ids: list[str],
         texts: list[str] | None = None,
         vectors: np.ndarray | None = None,
+        parallel: bool = True,
     ) -> None: ...
     def search(
         self,
         query_text: str | list[str] | None = None,
         query_vector: np.ndarray | None = None,
         k: int | None = None,
-        parallel: bool = False,
+        parallel: bool = True,
+        batch_size: int | None = None,
     ) -> list[SearchResult]: ...
-    def save(self, directory: str) -> None: ...
+    def save(self, directory: str, base_dir: str | None = None) -> None: ...
     @classmethod
-    def load(cls, directory: str) -> HelixIndex: ...
+    def load(cls, directory: str, base_dir: str | None = None) -> HelixIndex: ...
     @property
     def size(self) -> int: ...
     @property
@@ -79,4 +81,6 @@ class HelixIndex(CompositeIndex):
     @property
     def fit_values(self) -> np.ndarray | None: ...
     @property
-    def quantization_params(self) -> _Parameters | None: ...
+    def _params(self) -> _Parameters | None: ...
+    @property
+    def ids(self) -> list[str]: ...

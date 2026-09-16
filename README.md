@@ -5,16 +5,14 @@ Python search library combining keyword, semantic, and hybrid search into a sing
 
 ## Installation
 
-The open wrapper  and the engine is on public PyPI:
+Both the open wrapper and the engine are on public PyPI:
 
 ```bash
 pip install simlar
-```
-
-
-```bash
 pip install simlar-engine
 ```
+
+`simlar-engine` is TekDatum's proprietary binary, licensed under a [Commercial EULA](./EULA.md) — installing it means accepting those terms. See [docs/installation.md](docs/installation.md) for the compatible version matrix between `simlar` and `simlar-engine`.
 
 ## Quick start
 
@@ -61,6 +59,19 @@ for r in results:
     print(r.rank, r.id, f"{r.score:.4f}")
 ```
 
+### Exact-term matching
+
+Like keyword search, but scores by term overlap alone, with no relevance ranking — a lighter-weight option when you don't need BM25's IDF/length-normalization.
+
+```python
+from simlar import LookupIndex
+
+idx = LookupIndex()
+idx.add(ids=ids, texts=corpus)
+
+results = idx.search("immunotherapy clinical trial", k=1)
+```
+
 ### Hybrid search
 
 Combine keyword relevance and semantic similarity into one ranked list.
@@ -104,6 +115,7 @@ sim_LAR works as a drop-in component in:
 | Index | Best for |
 |-------|----------|
 | `RelevanceIndex` | Keyword search over text — no embeddings required |
+| `LookupIndex` | Fast exact-term matching over text, no relevance ranking |
 | `SimlarEngine` | Semantic search over pre-computed embedding vectors |
 | `HelixIndex` | Both signals combined; corpus fits in memory |
 | `StreamingHybridIndex` | Both signals; very large corpora added in batches |
@@ -165,7 +177,8 @@ We do not accept contributions to the proprietary engine.
 | Document | Description |
 |----------|-------------|
 | [Concepts](docs/concepts.md) | Architecture and design decisions |
-| [API Reference](docs/concepts.md) | Full public API |
+| [API Reference](docs/api-reference.md) | Full public API |
+| [Installation](docs/installation.md) | Setup and the simlar/simlar-engine compatibility matrix |
 | [Examples](docs/examples/) | Runnable scripts |
 
 ## License
@@ -194,7 +207,7 @@ If you only want to read or contribute to the open layer, you never need a licen
 ## What's open and what's not
 
 **Open (Apache 2.0, in this repo):**
-- The SDK and public API surface (`RelevanceIndex`, `HelixIndex`, `StreamingHybridIndex`, `ReciprocalRankFusion`)
+- The SDK and public API surface (`RelevanceIndex`, `LookupIndex`, `HelixIndex`, `StreamingHybridIndex`, `ReciprocalRankFusion`)
 - Framework adapters (LangChain / LlamaIndex / Haystack)
 - The `load_from_directory()` loader and `@register` extension API
 - Configuration schema, type stubs, examples, and docs
