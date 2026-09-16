@@ -39,7 +39,7 @@ class RelevanceIndex(TextIndex):
         self,
         queries: str | list[str],
         k: int,
-        parallel: bool = False,
+        parallel: bool = True,
     ) -> tuple[np.ndarray, np.ndarray]: ...
     def save(self, directory: str, base_dir: str | None = None) -> None: ...
     @classmethod
