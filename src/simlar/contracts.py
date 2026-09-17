@@ -74,8 +74,23 @@ class TextIndex(Index):
         """Remove documents by ID, rebuilding internal structures."""
 
     @abstractmethod
-    def search(self, query: str, k: int, parallel: bool = False) -> list[SearchResult]:
-        """Rank documents against query. `parallel` threads a batch of queries."""
+    def search(
+        self,
+        query: str,
+        k: int,
+        parallel: bool = False,
+        candidates: np.ndarray | None = None,
+    ) -> list[SearchResult]:
+        """Rank documents against query. `parallel` threads a batch of queries.
+
+        `candidates`, if given, is a single flat array of positions applied
+        to EVERY query in a batch call -- not a per-query restriction like
+        `VectorIndex.search_raw`'s `candidates` (used for Helix's per-query
+        text->vector cascade). A backend that can restrict a search this
+        cheaply doesn't need a per-query shape here: the one caller that
+        needs it (SQLFilter-style pre-filtering) always applies the same
+        filter to every query in a batch.
+        """
 
     # ── Internal ───────────────────────────────────────────────────────────────
 
@@ -89,9 +104,11 @@ class TextIndex(Index):
         queries: str | list[str],
         k: int,
         parallel: bool = False,
+        candidates: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Return (ids, scores) shaped (n_queries, k), int64/float64.
-        Used internally by HelixIndex._search_raw().
+        Used internally by HelixIndex._search_raw(). See `search`'s
+        docstring for what `candidates` does.
         """
 
 

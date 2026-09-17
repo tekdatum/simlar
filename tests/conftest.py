@@ -149,13 +149,25 @@ class _RelevanceCore:
     def delete(self, ids):
         pass
 
-    def search(self, query, k=10, parallel=False):
-        n = min(k, len(self._ids))
-        return [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
+    def search(self, query, k=10, parallel=False, candidates=None):
+        positions = (
+            list(range(len(self._ids)))
+            if candidates is None
+            else [p for p in candidates if 0 <= p < len(self._ids)]
+        )
+        n = min(k, len(positions))
+        return [
+            _SearchResult(rank=i, id=self._ids[positions[i]], score=1.0 / (i + 1)) for i in range(n)
+        ]
 
-    def search_raw(self, query, k, parallel=False):
-        n = min(k, len(self._ids))
-        return np.arange(n, dtype=np.int64), np.ones(n, dtype=np.float32)
+    def search_raw(self, query, k, parallel=False, candidates=None):
+        positions = (
+            list(range(len(self._ids)))
+            if candidates is None
+            else [p for p in candidates if 0 <= p < len(self._ids)]
+        )
+        n = min(k, len(positions))
+        return np.array(positions[:n], dtype=np.int64), np.ones(n, dtype=np.float32)
 
     def save(self, directory):
         Path(directory).mkdir(parents=True, exist_ok=True)
@@ -203,6 +215,13 @@ class _HelixCore:
         self._trained = True
 
     def add(self, ids, texts=None, vectors=None, parallel=False):
+        # Forward to the injected sub-indexes (2-arg add(), matching the TextIndex/VectorIndex
+        # ABC contract) so tests can verify a custom text_index/vector_index actually receives
+        # what was added, not just that construction didn't crash.
+        if texts is not None:
+            self._text_index.add(ids, texts)
+        if vectors is not None:
+            self._vector_index.add(ids, vectors)
         self._ids = list(ids)
         self._trained = True
 
@@ -266,13 +285,25 @@ class _TextCore:
     def delete(self, ids):
         self._ids = [i for i in self._ids if i not in set(ids)]
 
-    def search(self, query, k=10, parallel=False):
-        n = min(k, len(self._ids))
-        return [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
+    def search(self, query, k=10, parallel=False, candidates=None):
+        positions = (
+            list(range(len(self._ids)))
+            if candidates is None
+            else [p for p in candidates if 0 <= p < len(self._ids)]
+        )
+        n = min(k, len(positions))
+        return [
+            _SearchResult(rank=i, id=self._ids[positions[i]], score=1.0 / (i + 1)) for i in range(n)
+        ]
 
-    def search_raw(self, queries, k, parallel=False):
-        n = min(k, len(self._ids))
-        return np.arange(n, dtype=np.int64), np.ones(n, dtype=np.float32)
+    def search_raw(self, queries, k, parallel=False, candidates=None):
+        positions = (
+            list(range(len(self._ids)))
+            if candidates is None
+            else [p for p in candidates if 0 <= p < len(self._ids)]
+        )
+        n = min(k, len(positions))
+        return np.array(positions[:n], dtype=np.int64), np.ones(n, dtype=np.float32)
 
     def save(self, directory):
         Path(directory).mkdir(parents=True, exist_ok=True)
