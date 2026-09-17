@@ -48,16 +48,26 @@ class RelevanceIndex(TextIndex):
         k: int = 10,
         parallel: bool = True,
         batch_size: int | None = None,
+        candidates: np.ndarray | None = None,
     ) -> list[SearchResult] | list[list[SearchResult]]:
-        return self._core.search(query, k, parallel, batch_size)
+        return self._core.search(query, k, parallel, batch_size, candidates=candidates)
 
     def search_raw(
         self,
         queries: str | list[str],
         k: int,
         parallel: bool = True,
+        candidates: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
-        return self._core.search_raw(queries, k, parallel)
+        """`candidates`, if given, is a single flat array of positions applied
+        to every query in this call (matching every other TextIndex backend's
+        1D-only candidates contract). Uses bm25s's native `weight_mask` -- a
+        post-hoc multiplicative mask zeroing non-candidate scores before
+        top-k selection, built once per call and shared across the whole
+        batch. `_RelevanceCore` is TAAT/dense-accumulate (same architecture
+        as bm25c), so this costs no more accumulation work than an
+        unrestricted search -- only the final ranking differs."""
+        return self._core.search_raw(queries, k, parallel, candidates=candidates)
 
     def save(self, directory: str, base_dir: str | None = None) -> None:
         self._core.save(directory, base_dir)
