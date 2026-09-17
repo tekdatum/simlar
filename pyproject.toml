@@ -21,6 +21,7 @@ authors = [
 # See installation.md for instructions.
 dependencies = [
     "numpy>=1.24,<2.5",
+    "PyStemmer>=2.0",
 ]
 
 [project.optional-dependencies]

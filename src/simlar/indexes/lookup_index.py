@@ -39,16 +39,23 @@ class LookupIndex(TextIndex):
     def delete(self, ids: list[str]) -> None:
         self._core.delete(ids)
 
-    def search(self, query: str, k: int = 10, parallel: bool = True) -> list[SearchResult]:
-        return self._core.search(query, k, parallel)
+    def search(
+        self,
+        query: str,
+        k: int = 10,
+        parallel: bool = True,
+        candidates: np.ndarray | None = None,
+    ) -> list[SearchResult]:
+        return self._core.search(query, k, parallel, candidates)
 
     def search_raw(
         self,
         queries: str | list[str],
         k: int,
         parallel: bool = True,
+        candidates: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
-        return self._core.search_raw(queries, k, parallel)
+        return self._core.search_raw(queries, k, parallel, candidates)
 
     def save(self, directory: str) -> None:
         self._core.save(directory)

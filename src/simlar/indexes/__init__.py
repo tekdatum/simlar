@@ -1,3 +1,4 @@
+from .bm25c_index import BM25CIndex
 from .bm25x_index import BM25xIndex
 from .helix_index import HelixIndex
 from .lookup_index import LookupIndex
@@ -6,6 +7,7 @@ from .simlar_engine import SimlarEngine
 from .streaming_index import StreamingHelixIndex
 
 __all__ = [
+    "BM25CIndex",
     "BM25xIndex",
     "LookupIndex",
     "RelevanceIndex",
