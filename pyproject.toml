@@ -109,3 +109,7 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["fsspec", "fsspec.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["bm25c", "bm25c.*"]
+ignore_missing_imports = true
