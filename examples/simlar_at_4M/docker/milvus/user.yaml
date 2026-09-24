@@ -1,0 +1,14 @@
+# Extra config to override default milvus.yaml.
+#
+# Raised to 2 GiB - 1, the largest a single protobuf message can ever be, so the insert chunk
+# size is the benchmark's choice rather than the wire's. The proxy's gRPC limits ship at 64 MB,
+# which at ~1,543 bytes a row caps one call at roughly 43,000 passages; INSERT_BATCH in
+# bakeoff/contenders/milvus.py is currently 5,000, comfortably inside that. The headroom is here
+# so the batch can be raised without running into the wire before the server.
+# Everything else is left at the default -- the numbers in the table are stock Milvus.
+proxy:
+  grpc:
+    serverMaxRecvSize: 2147483647
+    serverMaxSendSize: 2147483647
+    clientMaxRecvSize: 2147483647
+    clientMaxSendSize: 2147483647

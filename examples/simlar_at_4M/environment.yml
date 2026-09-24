@@ -1,0 +1,32 @@
+# conda env create -f environment.yml && conda activate simlar-4m
+#
+# Pinned to what the published 4M run used, so a reproduction is comparing like with like.
+# Everything except python itself comes from pip: faiss-cpu, chromadb and pymilvus all ship
+# wheels, and mixing conda-forge and pip builds of the same native library is how a benchmark
+# ends up measuring two different BLAS implementations.
+name: simlar-4m
+channels:
+  - defaults
+dependencies:
+  - python=3.12
+  - pip
+  - pip:
+      # the engine under test -- simlar-engine is the proprietary binary simlar wraps
+      - simlar==1.1.0
+      - simlar-engine==1.0.2
+
+      # the competition
+      - faiss-cpu==1.15.0
+      - turbovec==0.8.0
+      - qdrant-client==1.19.0
+      - chromadb==1.5.9
+      - pymilvus==3.0.1
+
+      # corpus, embeddings and reporting
+      - datasets>=3.0
+      - sentence-transformers==5.7.0
+      - torch==2.13.0
+      - numpy==2.4.6
+      - pandas>=2.2
+      - psutil>=6.0
+      - jupyterlab>=4.2
