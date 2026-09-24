@@ -51,7 +51,11 @@ class BM25CIndex(TextIndex):
     ) -> None:
         _require_bm25c()
         self._core = bm25c.BM25CRelevanceCore(
-            method=method, k1=k1, b=b, stopwords_lang=stopwords_lang, stemmer_lang=stemmer_lang,
+            method=method,
+            k1=k1,
+            b=b,
+            stopwords_lang=stopwords_lang,
+            stemmer_lang=stemmer_lang,
         )
 
     # ── Public contract ───────────────────────────────────────────────────────

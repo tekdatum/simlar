@@ -19,7 +19,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-pytest.importorskip("bm25c", reason="bm25c not installed -- pip install -e <bm25c repo>/python first")
+pytest.importorskip(
+    "bm25c", reason="bm25c not installed -- pip install -e <bm25c repo>/python first"
+)
 
 from simlar.indexes.bm25c_index import BM25CIndex
 
@@ -192,10 +194,10 @@ class TestCandidates:
     def test_search_raw_candidates_scores_match_unrestricted(self):
         index = _make_index_with_shared_term()
         ids, scores = index.search_raw("swim", k=6)
-        unrestricted = {int(i): float(s) for i, s in zip(ids[0], scores[0]) if i != -1}
+        unrestricted = {int(i): float(s) for i, s in zip(ids[0], scores[0], strict=True) if i != -1}
 
         ids, scores = index.search_raw("swim", k=6, candidates=np.array([2, 4]))
-        restricted = {int(i): float(s) for i, s in zip(ids[0], scores[0]) if i != -1}
+        restricted = {int(i): float(s) for i, s in zip(ids[0], scores[0], strict=True) if i != -1}
         assert restricted == unrestricted
 
     def test_search_raw_candidates_shared_across_batch(self):
@@ -260,8 +262,12 @@ class TestHelixIntegration:
         bm = BM25CIndex()
         helix = HelixIndex(text_index=bm)
         corpus = [
-            "fox jumps quick", "dog sleeps lazy", "cat runs fast",
-            "bird flies high", "fish swims deep", "wolf howls loud",
+            "fox jumps quick",
+            "dog sleeps lazy",
+            "cat runs fast",
+            "bird flies high",
+            "fish swims deep",
+            "wolf howls loud",
         ]
         vectors = np.random.default_rng(0).standard_normal((6, 8)).astype(np.float32)
         helix.add(["a", "b", "c", "d", "e", "f"], texts=corpus, vectors=vectors)
@@ -279,8 +285,12 @@ class TestStreamingHelixIntegration:
 
         streaming = StreamingHybridIndex(text_index_cls=BM25CIndex)
         corpus = [
-            "fox jumps quick", "dog sleeps lazy", "cat runs fast",
-            "bird flies high", "fish swims deep", "wolf howls loud",
+            "fox jumps quick",
+            "dog sleeps lazy",
+            "cat runs fast",
+            "bird flies high",
+            "fish swims deep",
+            "wolf howls loud",
         ]
         vectors = np.random.default_rng(0).standard_normal((6, 8)).astype(np.float32)
         streaming.add_batch(corpus, vectors)

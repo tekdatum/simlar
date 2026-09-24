@@ -34,12 +34,14 @@ class RelevanceIndex(TextIndex):
         k: int = 10,
         parallel: bool = True,
         batch_size: int | None = None,
+        candidates: np.ndarray | None = None,
     ) -> list[SearchResult] | list[list[SearchResult]]: ...
     def search_raw(
         self,
         queries: str | list[str],
         k: int,
         parallel: bool = True,
+        candidates: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray]: ...
     def save(self, directory: str, base_dir: str | None = None) -> None: ...
     @classmethod
