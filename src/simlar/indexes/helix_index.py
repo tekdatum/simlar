@@ -57,15 +57,22 @@ class HelixIndex(CompositeIndex):
     ) -> None:
         self._core.add(ids, texts, vectors, parallel)
 
-    def search(
+    # A list of texts or a 2D query_vector is a batch and returns one result
+    # list per query, which the single-query CompositeIndex contract can't express.
+    def search(  # type: ignore[override]
         self,
         query_text: str | list[str] | None = None,
         query_vector: np.ndarray | None = None,
         k: int | None = None,
         parallel: bool = True,
         batch_size: int | None = None,
+        candidates: np.ndarray | None = None,
     ) -> list[SearchResult] | list[list[SearchResult]]:
-        return self._core.search(query_text, query_vector, k, parallel, batch_size)
+        if candidates is None:
+            return self._core.search(query_text, query_vector, k, parallel, batch_size)
+        return self._core.search(
+            query_text, query_vector, k, parallel, batch_size, candidates=candidates
+        )
 
     def fit(
         self,

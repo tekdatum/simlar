@@ -389,6 +389,32 @@ class _StreamingCore:
         return None
 
 
+# ── Stub filtering (mirrors private simlar_engine FilteredIndex / SQLFilter) ──
+# Import-level placeholders only: simlar.FilteredIndex subclasses the engine's
+# class, and simlar re-exports SQLFilter / FilterError. Filtering behaviour
+# itself is tested in the engine repo, against the real implementation.
+
+
+class _FilterError(ValueError):
+    pass
+
+
+class _SQLFilter:
+    pass
+
+
+class _FilteredIndex:
+    _load_inner = None
+
+    def __init__(self, inner, sql_filter=None):
+        self._inner = inner
+        self._filter = sql_filter
+
+    @property
+    def inner(self):
+        return self._inner
+
+
 # ── Inject stubs into sys.modules ─────────────────────────────────────────────
 
 
@@ -412,6 +438,9 @@ def _inject_engine_stubs() -> None:
         write_config=_write_config,
         read_config=_read_config,
         ReciprocalRankFusion=_ReciprocalRankFusion,
+        FilterError=_FilterError,
+        SQLFilter=_SQLFilter,
+        FilteredIndex=_FilteredIndex,
     )
     _mod("simlar_engine._types", SearchResult=_SearchResult, _Parameters=_Parameters)
     _mod(

@@ -102,10 +102,13 @@ class SimlarEngine(VectorIndex):
         k: int = 10,
         parallel: bool = True,
         batch_size: int | None = None,
+        candidates: np.ndarray | None = None,
     ) -> list[SearchResult]:
         self._rwlock.acquire_read()
         try:
-            return self._core.search(query, k, parallel, batch_size)
+            if candidates is None:
+                return self._core.search(query, k, parallel, batch_size)
+            return self._core.search(query, k, parallel, batch_size, candidates=candidates)
         finally:
             self._rwlock.release_read()
 
