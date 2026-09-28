@@ -1,6 +1,9 @@
+from simlar_engine import FilterError, MetadataFilter, SQLFilter
+
 from simlar.contracts import SearchResult, TextIndex, VectorIndex
 from simlar.fusion import ReciprocalRankFusion
 from simlar.indexes.bm25c_index import BM25CIndex
+from simlar.indexes.filtered_index import FilteredIndex
 from simlar.indexes.helix_index import HelixIndex
 from simlar.indexes.lookup_index import LookupIndex
 from simlar.indexes.registry import load_from_directory, register
@@ -22,6 +25,11 @@ __all__ = [
     "HelixIndex",
     "StreamingHybridIndex",
     "LookupIndex",
+    # Filtering
+    "FilteredIndex",
+    "SQLFilter",
+    "MetadataFilter",
+    "FilterError",
     # Registry
     "register",
     "load_from_directory",

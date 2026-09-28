@@ -42,8 +42,16 @@ class SimlarEngine(VectorIndex):
     def delete(self, ids: list[str]) -> None:
         self._core.delete(ids)
 
-    def search(self, query: np.ndarray, k: int = 10, parallel: bool = True) -> list[SearchResult]:
-        return self._core.search(query, k, parallel)
+    def search(
+        self,
+        query: np.ndarray,
+        k: int = 10,
+        parallel: bool = True,
+        candidates: np.ndarray | None = None,
+    ) -> list[SearchResult]:
+        if candidates is None:
+            return self._core.search(query, k, parallel)
+        return self._core.search(query, k, parallel, candidates=candidates)
 
     def search_raw(
         self,

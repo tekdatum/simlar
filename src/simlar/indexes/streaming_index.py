@@ -71,8 +71,11 @@ class StreamingHelixIndex:
         query_vector: np.ndarray,
         k: int | None = None,
         parallel: bool = False,
+        candidates: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
-        return self._core.search(query_text, query_vector, k, parallel)
+        if candidates is None:
+            return self._core.search(query_text, query_vector, k, parallel)
+        return self._core.search(query_text, query_vector, k, parallel, candidates=candidates)
 
     # ── Persistence ───────────────────────────────────────────────────────────
 

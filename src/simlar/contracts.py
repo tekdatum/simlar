@@ -125,8 +125,20 @@ class VectorIndex(Index):
         """Append new vectors. `parallel` threads their quantization."""
 
     @abstractmethod
-    def search(self, query: np.ndarray, k: int, parallel: bool = False) -> list[SearchResult]:
-        """Rank documents against query. `parallel` threads a batch of queries."""
+    def search(
+        self,
+        query: np.ndarray,
+        k: int,
+        parallel: bool = False,
+        candidates: np.ndarray | None = None,
+    ) -> list[SearchResult]:
+        """Rank documents against query. `parallel` threads a batch of queries.
+
+        `candidates`, if given, is a single flat array of positions applied
+        to every query -- the same pre-filter contract as `TextIndex.search`
+        (used by FilteredIndex). Fewer allowed documents than `k` means
+        fewer results.
+        """
 
     @abstractmethod
     def update(self, ids: list[str], vectors: np.ndarray) -> None:
@@ -155,6 +167,10 @@ class VectorIndex(Index):
     ) -> tuple[np.ndarray, np.ndarray]:
         """Return (ids, distances) shaped (n_queries, k), int64/float64.
         Used internally by HelixIndex._search_raw().
+
+        `candidates` is either a 1D array of positions shared by every query
+        (the pre-filter, see `search`) or a 2D (n_queries, n_cand) array of
+        per-query rows (Helix's text->vector cascade).
         """
 
     @abstractmethod
@@ -183,8 +199,13 @@ class CompositeIndex(Index):
         query_vector: np.ndarray | None = None,
         k: int = 10,
         parallel: bool = False,
+        candidates: np.ndarray | None = None,
     ) -> list[SearchResult]:
-        """Search every sub-index and fuse. `parallel` threads a batch of queries."""
+        """Search every sub-index and fuse. `parallel` threads a batch of queries.
+
+        `candidates`, if given, is a single flat array of positions applied
+        to every query, restricting every sub-index (see FilteredIndex).
+        """
 
     @abstractmethod
     def fit(

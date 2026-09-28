@@ -61,6 +61,7 @@ class HelixIndex(CompositeIndex):
         query_vector: np.ndarray | None = None,
         k: int | None = None,
         parallel: bool = False,
+        candidates: np.ndarray | None = None,
     ) -> list[SearchResult]: ...
     def save(self, directory: str) -> None: ...
     @classmethod
