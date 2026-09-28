@@ -403,6 +403,10 @@ class _SQLFilter:
     pass
 
 
+class _MetadataFilter:
+    pass
+
+
 class _FilteredIndex:
     _load_inner = None
 
@@ -440,6 +444,7 @@ def _inject_engine_stubs() -> None:
         ReciprocalRankFusion=_ReciprocalRankFusion,
         FilterError=_FilterError,
         SQLFilter=_SQLFilter,
+        MetadataFilter=_MetadataFilter,
         FilteredIndex=_FilteredIndex,
     )
     _mod("simlar_engine._types", SearchResult=_SearchResult, _Parameters=_Parameters)
