@@ -1,8 +1,18 @@
 from __future__ import annotations
 
-from simlar_engine import FilteredIndex as _EngineFilteredIndex
-
+from simlar._engine import engine_class, engine_core
 from simlar.indexes.registry import load_from_directory, register
+
+# The engine's filtering types. On an engine build without filtering these are stand-ins that
+# raise IndexUnavailableError when used; FilterError stays a real exception so `except` works.
+_EngineFilteredIndex = engine_class("filtered", "simlar_engine", "FilteredIndex")
+SQLFilter = engine_class("filtered", "simlar_engine", "SQLFilter")
+MetadataFilter = engine_class("filtered", "simlar_engine", "MetadataFilter")
+FilterError = engine_core("filtered", "simlar_engine", "FilterError")
+if FilterError is None:
+
+    class FilterError(ValueError):
+        """Stand-in: this engine build has no filtering, so nothing raises it."""
 
 
 @register("filtered")

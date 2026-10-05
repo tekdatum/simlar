@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import numpy as np
-from simlar_engine.indexes._helix_impl import _HelixCore
 
+from simlar._engine import engine_core, require_core
 from simlar.contracts import (
     CompositeIndex,
     FusionStrategy,
@@ -12,6 +12,8 @@ from simlar.contracts import (
     _Parameters,
 )
 from simlar.indexes.registry import register
+
+_HelixCore = engine_core("helix", "simlar_engine.indexes._helix_impl", "_HelixCore")
 
 
 @register("helix")
@@ -35,7 +37,7 @@ class HelixIndex(CompositeIndex):
         alpha_text: float = 0.10,
         alpha_vector: float = 1.0,
     ) -> None:
-        self._core = _HelixCore(
+        self._core = require_core("helix", _HelixCore)(
             text_index=text_index,
             vector_index=vector_index,
             fusion=fusion,
@@ -90,7 +92,7 @@ class HelixIndex(CompositeIndex):
     @classmethod
     def load(cls, directory: str, base_dir: str | None = None) -> HelixIndex:
         obj = cls.__new__(cls)
-        obj._core = _HelixCore.load(directory, base_dir)
+        obj._core = require_core("helix", _HelixCore).load(directory, base_dir)
         return obj
 
     # ── Metadata ──────────────────────────────────────────────────────────────

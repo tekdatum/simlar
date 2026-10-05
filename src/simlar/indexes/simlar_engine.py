@@ -3,10 +3,12 @@ from __future__ import annotations
 import threading
 
 import numpy as np
-from simlar_engine.indexes._simlar_impl import _SimlarCore
 
+from simlar._engine import engine_core, require_core
 from simlar.contracts import SearchResult, VectorIndex, _Parameters
 from simlar.indexes.registry import register
+
+_SimlarCore = engine_core("simlar", "simlar_engine.indexes._simlar_impl", "_SimlarCore")
 
 
 class _RWLock:
@@ -57,7 +59,7 @@ class SimlarEngine(VectorIndex):
     """
 
     def __init__(self, n_candidates: int | None = None) -> None:
-        self._core = _SimlarCore(n_candidates)
+        self._core = require_core("simlar", _SimlarCore)(n_candidates)
         self._rwlock = _RWLock()
 
     # ── Public contract ───────────────────────────────────────────────────────
@@ -139,7 +141,7 @@ class SimlarEngine(VectorIndex):
     @classmethod
     def load(cls, directory: str, base_dir: str | None = None) -> SimlarEngine:
         obj = cls.__new__(cls)
-        obj._core = _SimlarCore.load(directory, base_dir)
+        obj._core = require_core("simlar", _SimlarCore).load(directory, base_dir)
         obj._rwlock = _RWLock()
         return obj
 
