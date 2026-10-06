@@ -26,9 +26,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-langchain   = ["langchain-core>=0.2"]
-haystack    = ["haystack-ai>=2.0"]
-llama_index = ["llama-index-core>=0.10"]
+langchain   = ["langchain-core>=1.0"]
+haystack    = ["haystack-ai>=3.0,<4"]
+llama_index = ["llama-index-core>=0.14"]
 dev = [
     "pytest>=8.0",
     "numpy>=1.24,<2.5",

@@ -20,7 +20,7 @@ class RelevanceIndex(TextIndex):
 
     def __init__(
         self,
-        method: str = "robertson",
+        method: str = "lucene",
         k1: float = 1.5,
         b: float = 0.75,
         stopwords_lang: str = "english",

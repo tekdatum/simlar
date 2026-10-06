@@ -58,7 +58,6 @@ VECS = np.ones((2, 8), dtype=np.float32)
 
 
 def test_langchain():
-    from simlar.integrations.langchain.langchain_retriever import SimlarRetriever
     from simlar.integrations.langchain.simlar_vector_store import SimlarVectorStore
 
     SEEN.clear()
@@ -67,7 +66,7 @@ def test_langchain():
     s.add_texts(["x y"], parallel=True)
     s.similarity_search("hello", k=2)
     s.similarity_search_with_score("hello", k=2, parallel=True)
-    SimlarRetriever(vector_store=s, k=2, parallel=True).invoke("hello")
+    s.as_retriever(search_kwargs={"k": 2, "parallel": True}).invoke("hello")
     assert [p for _, p in SEEN] == [False, True, False, True, True], SEEN
 
 
@@ -90,16 +89,16 @@ def test_haystack():
 
 
 def test_llamaindex():
+    from llama_index.core.schema import TextNode
     from llama_index.core.vector_stores.types import VectorStoreQuery
 
-    from simlar.integrations.llama_index.simlar_retriever import SimlarRetriever
     from simlar.integrations.llama_index.simlar_vector_store import SimlarVectorStore
 
     SEEN.clear()
-    st = SimlarVectorStore.from_texts(TEXTS, IDS, VECS, parallel=False)
+    st = SimlarVectorStore(parallel=False)
+    st.add([TextNode(id_=i, text=t, embedding=[1.0] * 8) for i, t in zip(IDS, TEXTS, strict=True)])
+    st.add([TextNode(id_="c", text="x y", embedding=[1.0] * 8)], parallel=True)
     q = VectorStoreQuery(query_embedding=[1.0] * 8, query_str="hello", similarity_top_k=2)
     st.query(q)
     st.query(q, parallel=True)
-    r = SimlarRetriever.from_texts(TEXTS, IDS, VECS, embed_model=E(), k=2, parallel=True)
-    r.retrieve("hello")
-    assert [p for _, p in SEEN] == [False, False, True, True, True], SEEN
+    assert [p for _, p in SEEN] == [False, True, False, True], SEEN

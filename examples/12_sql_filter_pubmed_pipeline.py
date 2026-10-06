@@ -36,7 +36,7 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
-from simlar import BM25CIndex
+from simlar import RelevanceIndex
 from simlar_engine import SQLFilter
 
 N_ARTICLES = 300
@@ -128,7 +128,7 @@ def main() -> None:
     ids = [a["id"] for a in articles]
     texts = [f"{a['title']}. {a['abstract']}" for a in articles]
 
-    index = BM25CIndex()
+    index = RelevanceIndex()
     index.add(ids, texts)
 
     filt = SQLFilter()

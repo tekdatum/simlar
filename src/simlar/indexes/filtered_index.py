@@ -34,3 +34,21 @@ class FilteredIndex(_EngineFilteredIndex):
 
     # Load the inner index back as the simlar wrapper it was saved from.
     _load_inner = staticmethod(load_from_directory)
+
+    @classmethod
+    def load(cls, directory: str, base_dir=None, *, embedder=None) -> FilteredIndex:
+        obj = super().load(directory) if base_dir is None else super().load(directory, base_dir)
+        if embedder is not None:
+            obj.embedder = embedder
+        return obj
+
+    # The inner index owns the embedder; __getattr__ only forwards reads.
+    @property
+    def embedder(self):
+        return getattr(self.inner, "embedder", None)
+
+    @embedder.setter
+    def embedder(self, value) -> None:
+        if not hasattr(self.inner, "embedder"):
+            raise TypeError(f"{type(self.inner).__name__} does not take an embedder")
+        self.inner.embedder = value

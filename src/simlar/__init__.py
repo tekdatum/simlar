@@ -1,6 +1,7 @@
 from simlar_engine import FilterError, MetadataFilter, SQLFilter
 
 from simlar.contracts import SearchResult, TextIndex, VectorIndex
+from simlar.embeddings import CallableEmbedder, Embedder
 from simlar.fusion import ReciprocalRankFusion
 from simlar.indexes.bm25c_index import BM25CIndex
 from simlar.indexes.filtered_index import FilteredIndex
@@ -50,6 +51,9 @@ __all__ = [
     "SearchResult",
     "TextIndex",
     "VectorIndex",
+    # Embeddings
+    "Embedder",
+    "CallableEmbedder",
     # Fusion
     "ReciprocalRankFusion",
     # Indexes
