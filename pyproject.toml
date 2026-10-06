@@ -78,6 +78,18 @@ testpaths  = ["tests"]
 pythonpath = ["src"]
 addopts    = "-ra -q"
 
+# ── Coverage ──────────────────────────────────────────────────────────────────
+
+# CI runs against the engine stub, where the tests for these modules are
+# skipped (they need SIMLAR_REAL_ENGINE=1). Leave them out so the coverage
+# total only measures code the stub run can exercise.
+[tool.coverage.run]
+omit = [
+    "*/simlar/integrations/haystack/_filters.py",
+    "*/simlar/integrations/haystack/simlar_document_store.py",
+    "*/simlar/integrations/llama_index/simlar_vector_store.py",
+]
+
 # ── Mypy ─────────────────────────────────────────────────────────────────────
 
 [tool.mypy]
