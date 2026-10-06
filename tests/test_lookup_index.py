@@ -1,4 +1,4 @@
-"""Tests for LookupIndex (wraps the stubbed _TextCore from conftest)."""
+"""Tests for LookupIndex (wraps the stubbed _HashMatchCore from conftest)."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ class TestConstruction:
         assert index.size == 0
         assert index.is_trained is False
 
-    def test_custom_langs(self):
-        index = LookupIndex(stopwords_lang="french", stemmer_lang="french")
+    def test_custom_stopwords_lang(self):
+        index = LookupIndex(stopwords_lang="french")
         assert index.size == 0
 
 

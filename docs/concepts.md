@@ -31,11 +31,11 @@ results = idx.search("hello", k=1)
 results[0].id  # "a"
 ```
 
-`fit()` and `add()` apply to `RelevanceIndex`, `SimlarEngine`, and `HelixIndex`. `StreamingHybridIndex` does not have either method — see [below](#streaminghybridindex--hybrid-search-at-scale) for how it ingests documents.
+`fit()` and `add()` apply to `RelevanceIndex`, `SimlarEngine`, `HelixIndex`, and `LookupIndex`. `StreamingHybridIndex` does not have either method — see [below](#streaminghybridindex--hybrid-search-at-scale) for how it ingests documents.
 
 ## Indexes
 
-simlar ships four index types. Pick the one that matches your data and scale.
+simlar ships five index types. Pick the one that matches your data and scale.
 
 ### RelevanceIndex — keyword search
 
@@ -44,6 +44,14 @@ Finds documents that contain the right words. It understands that a rare word is
 **Use when:** your queries are keyword-based and you need fast, explainable results. No embeddings required.
 
 **Limitation:** does not understand meaning — searching for "car" won't surface a document that only says "automobile."
+
+---
+
+### LookupIndex — exact keyword matching
+
+A lighter-weight sibling of `RelevanceIndex`: scores a document by how many *distinct* query terms it contains.
+**Use when:** you want fast exact-term filtering.
+
 
 ---
 
@@ -78,7 +86,8 @@ The same hybrid approach as HelixIndex, but designed for corpora too large to fi
 
 | I have… | I need… | Index |
 |---------|---------|-------|
-| Text | Keyword matching | `RelevanceIndex` |
+| Text | Keyword matching, ranked by relevance | `RelevanceIndex` |
+| Text | Fast exact-term matching, no ranking | `LookupIndex` |
 | Embeddings | Semantic similarity | `SimlarEngine` |
 | Text + embeddings | Both signals | `HelixIndex` |
 | Text + embeddings, massive scale | Both signals at scale | `StreamingHybridIndex` |

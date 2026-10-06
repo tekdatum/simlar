@@ -34,11 +34,7 @@ class RelevanceIndex(TextIndex):
         self._core.fit(corpus, parallel)
 
     def add(self, ids: list[str], texts: list[str], parallel: bool = True) -> None:
-        # _RelevanceCore.add() doesn't accept parallel (only fit()/search_raw()
-        # do) -- passing it here raised TypeError for every caller. `parallel`
-        # stays in this method's own signature for interface consistency with
-        # fit()/search(), it just isn't forwarded to something that can't take it.
-        self._core.add(ids, texts)
+        self._core.add(ids, texts, parallel)
 
     def update(self, ids: list[str], texts: list[str]) -> None:
         self._core.update(ids, texts)
@@ -48,20 +44,19 @@ class RelevanceIndex(TextIndex):
 
     def search(
         self,
-        query: str,
+        query: str | list[str],
         k: int = 10,
         parallel: bool = True,
+        batch_size: int | None = None,
         candidates: np.ndarray | None = None,
-    ) -> list[SearchResult]:
-        # _RelevanceCore.search() doesn't accept parallel either (see add()
-        # above) -- same fix, same reasoning.
-        return self._core.search(query, k, candidates=candidates)
+    ) -> list[SearchResult] | list[list[SearchResult]]:
+        return self._core.search(query, k, parallel, batch_size, candidates)
 
     def search_raw(
         self,
         queries: str | list[str],
         k: int,
-        parallel: bool = False,
+        parallel: bool = True,
         candidates: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """`candidates`, if given, is a single flat array of positions applied
@@ -71,16 +66,17 @@ class RelevanceIndex(TextIndex):
         top-k selection, built once per call and shared across the whole
         batch. `_RelevanceCore` is TAAT/dense-accumulate (same architecture
         as bm25c), so this costs no more accumulation work than an
-        unrestricted search -- only the final ranking differs."""
-        return self._core.search_raw(queries, k, parallel, candidates=candidates)
+        unrestricted search -- only the final ranking differs. Rows are
+        padded with -1 when fewer than k candidates exist."""
+        return self._core.search_raw(queries, k, parallel, candidates)
 
-    def save(self, directory: str) -> None:
-        self._core.save(directory)
+    def save(self, directory: str, base_dir: str | None = None) -> None:
+        self._core.save(directory, base_dir)
 
     @classmethod
-    def load(cls, directory: str) -> RelevanceIndex:
+    def load(cls, directory: str, base_dir: str | None = None) -> RelevanceIndex:
         obj = cls.__new__(cls)
-        obj._core = _RelevanceCore.load(directory)
+        obj._core = _RelevanceCore.load(directory, base_dir)
         return obj
 
     # ── Properties ────────────────────────────────────────────────────────────

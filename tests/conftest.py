@@ -48,6 +48,20 @@ def _read_config(path) -> dict:
     return json.loads(Path(path).read_text())
 
 
+def _resolve_directory(directory, base_dir=None) -> Path:
+    if ".." in Path(directory).parts:
+        raise ValueError(f"directory '{directory}' contains '..' components, which is not allowed")
+    d = Path(directory).resolve()
+    if base_dir is not None:
+        base = Path(base_dir).resolve()
+        if not d.is_relative_to(base):
+            raise ValueError(
+                f"directory '{directory}' resolves to '{d}', which escapes the allowed "
+                f"base directory '{base}'"
+            )
+    return d
+
+
 # ── Stub RRF (pure-Python path only) ─────────────────────────────────────────
 
 
@@ -110,12 +124,12 @@ class _SimlarCore:
         n = min(k, len(self._ids))
         return np.arange(n, dtype=np.int64), np.ones(n, dtype=np.float32)
 
-    def save(self, directory):
+    def save(self, directory, base_dir=None):
         Path(directory).mkdir(parents=True, exist_ok=True)
         _write_config(Path(directory) / "config.json", {"index_type": "simlar"})
 
     @classmethod
-    def load(cls, directory):
+    def load(cls, directory, base_dir=None):
         return cls()
 
     @property
@@ -149,16 +163,9 @@ class _RelevanceCore:
     def delete(self, ids):
         pass
 
-    def search(self, query, k=10, parallel=False, candidates=None):
-        positions = (
-            list(range(len(self._ids)))
-            if candidates is None
-            else [p for p in candidates if 0 <= p < len(self._ids)]
-        )
-        n = min(k, len(positions))
-        return [
-            _SearchResult(rank=i, id=self._ids[positions[i]], score=1.0 / (i + 1)) for i in range(n)
-        ]
+    def search(self, query, k=10, parallel=False, batch_size=None):
+        n = min(k, len(self._ids))
+        return [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
 
     def search_raw(self, query, k, parallel=False, candidates=None):
         positions = (
@@ -169,12 +176,12 @@ class _RelevanceCore:
         n = min(k, len(positions))
         return np.array(positions[:n], dtype=np.int64), np.ones(n, dtype=np.float32)
 
-    def save(self, directory):
+    def save(self, directory, base_dir=None):
         Path(directory).mkdir(parents=True, exist_ok=True)
         _write_config(Path(directory) / "config.json", {"index_type": "bm25"})
 
     @classmethod
-    def load(cls, directory):
+    def load(cls, directory, base_dir=None):
         return cls()
 
     @property
@@ -225,17 +232,17 @@ class _HelixCore:
         self._ids = list(ids)
         self._trained = True
 
-    def search(self, query_text=None, query_vector=None, k=None, parallel=False):
+    def search(self, query_text=None, query_vector=None, k=None, parallel=False, batch_size=None):
         effective_k = k or self._top_k
         n = min(effective_k, len(self._ids))
         return [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
 
-    def save(self, directory):
+    def save(self, directory, base_dir=None):
         Path(directory).mkdir(parents=True, exist_ok=True)
         _write_config(Path(directory) / "config.json", {"index_type": "helix"})
 
     @classmethod
-    def load(cls, directory):
+    def load(cls, directory, base_dir=None):
         return cls()
 
     @property
@@ -267,8 +274,8 @@ class _HelixCore:
         return None
 
 
-class _TextCore:
-    def __init__(self, stopwords_lang="english", stemmer_lang="english"):
+class _HashMatchCore:
+    def __init__(self, stopwords_lang="english"):
         self._ids: list[str] = []
         self._trained = False
 
@@ -285,7 +292,7 @@ class _TextCore:
     def delete(self, ids):
         self._ids = [i for i in self._ids if i not in set(ids)]
 
-    def search(self, query, k=10, parallel=False, candidates=None):
+    def search(self, query, k=10, parallel=False, batch_size=None, candidates=None):
         positions = (
             list(range(len(self._ids)))
             if candidates is None
@@ -305,12 +312,12 @@ class _TextCore:
         n = min(k, len(positions))
         return np.array(positions[:n], dtype=np.int64), np.ones(n, dtype=np.float32)
 
-    def save(self, directory):
+    def save(self, directory, base_dir=None):
         Path(directory).mkdir(parents=True, exist_ok=True)
         _write_config(Path(directory) / "config.json", {"index_type": "lookup"})
 
     @classmethod
-    def load(cls, directory):
+    def load(cls, directory, base_dir=None):
         return cls()
 
     @property
@@ -335,24 +342,28 @@ class _StreamingCore:
         self._count += len(corpus) if hasattr(corpus, "__len__") else 0
         self._trained = True
 
-    def search(self, query_text=None, query_vector=None, k=10, parallel=False):
+    def search(self, query_text=None, query_vector=None, k=10, parallel=False, batch_size=None):
         n = min(k if k is not None else 10, self._count)
         return (
             np.arange(n, dtype=np.int64),
             np.array([1.0 / (i + 1) for i in range(n)], dtype=np.float32),
         )
 
-    def save(self, directory):
+    def save(self, directory, base_dir=None):
         Path(directory).mkdir(parents=True, exist_ok=True)
         _write_config(Path(directory) / "config.json", {"index_type": "streaming"})
 
     @classmethod
-    def load(cls, directory):
+    def load(cls, directory, base_dir=None):
         return cls()
 
     @property
     def size(self):
         return self._count
+
+    @property
+    def n_shards(self):
+        return 1 if self._trained else 0
 
     @property
     def is_trained(self):
@@ -383,6 +394,18 @@ class _FilteredIndex:
     @property
     def inner(self):
         return self._inner
+
+    @property
+    def index_type(self):
+        return "streaming_hybrid"
+
+    @property
+    def boundaries(self):
+        return None
+
+    @property
+    def fit_values(self):
+        return None
 
 
 # ── Inject stubs into sys.modules ─────────────────────────────────────────────
@@ -418,6 +441,7 @@ def _inject_engine_stubs() -> None:
         FORMAT_VERSION=_FORMAT_VERSION,
         write_config=_write_config,
         read_config=_read_config,
+        resolve_directory=_resolve_directory,
     )
     _mod("simlar_engine._registry")
     _mod("simlar_engine.fusion")
@@ -426,7 +450,7 @@ def _inject_engine_stubs() -> None:
     _mod("simlar_engine.indexes._simlar_impl", _SimlarCore=_SimlarCore)
     _mod("simlar_engine.indexes._helix_impl", _HelixCore=_HelixCore)
     _mod("simlar_engine.indexes._relevance_impl", _RelevanceCore=_RelevanceCore)
-    _mod("simlar_engine.indexes._lookup_impl", _TextCore=_TextCore)
+    _mod("simlar_engine.indexes._hash_match_impl", _HashMatchCore=_HashMatchCore)
     _mod("simlar_engine.indexes._streaming_impl", _StreamingCore=_StreamingCore)
     _mod("simlar_engine.kernels")
     _mod("simlar_engine.kernels.fusion")

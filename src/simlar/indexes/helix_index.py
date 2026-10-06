@@ -54,7 +54,9 @@ class HelixIndex(CompositeIndex):
         texts: list[str] | None = None,
         vectors: np.ndarray | None = None,
         parallel: bool = True,
+        parallel: bool = True,
     ) -> None:
+        self._core.add(ids, texts, vectors, parallel)
         self._core.add(ids, texts, vectors, parallel)
 
     # A list of texts or a 2D query_vector is a batch and returns one result
@@ -65,10 +67,11 @@ class HelixIndex(CompositeIndex):
         query_vector: np.ndarray | None = None,
         k: int | None = None,
         parallel: bool = True,
+        batch_size: int | None = None,
         candidates: np.ndarray | None = None,
     ) -> list[SearchResult] | list[list[SearchResult]]:
         if candidates is None:
-            return self._core.search(query_text, query_vector, k, parallel)
+            return self._core.search(query_text, query_vector, k, parallel, batch_size)
         return self._core.search(query_text, query_vector, k, parallel, candidates=candidates)
 
     def fit(
@@ -81,13 +84,13 @@ class HelixIndex(CompositeIndex):
         params = kwargs.pop("params", None)
         self._core.fit(corpus, vectors, parallel, params)
 
-    def save(self, directory: str) -> None:
-        self._core.save(directory)
+    def save(self, directory: str, base_dir: str | None = None) -> None:
+        self._core.save(directory, base_dir)
 
     @classmethod
-    def load(cls, directory: str) -> HelixIndex:
+    def load(cls, directory: str, base_dir: str | None = None) -> HelixIndex:
         obj = cls.__new__(cls)
-        obj._core = _HelixCore.load(directory)
+        obj._core = _HelixCore.load(directory, base_dir)
         return obj
 
     # ── Metadata ──────────────────────────────────────────────────────────────
