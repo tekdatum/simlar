@@ -160,7 +160,7 @@ class SimlarEngine(VectorIndex):
             self._rwlock.release_read()
 
     def save(self, directory: str, base_dir: str | None = None) -> None:
-    
+
         self._rwlock.acquire_read()
         try:
             self._core.save(directory, base_dir)
