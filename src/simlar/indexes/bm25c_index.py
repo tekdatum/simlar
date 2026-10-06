@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import numpy as np
+from simlar_engine._persistence import resolve_directory
 
 try:
     import bm25c
 except ImportError:  # pragma: no cover - exercised via the import-guard test
     bm25c = None  # type: ignore[assignment]
-
-from simlar_engine._persistence import resolve_directory
 
 from simlar.contracts import SearchResult, TextIndex
 from simlar.indexes.registry import register
@@ -85,16 +84,15 @@ class BM25CIndex(TextIndex):
         batch_size: int | None = None,
         candidates: np.ndarray | None = None,
     ) -> list[SearchResult] | list[list[SearchResult]]:
-        # bm25c's search() takes one query, so a batch is answered one query at a time.
-        if isinstance(query, list):
-            return [self._search_one(q, k, candidates) for q in query]
-        return self._search_one(query, k, candidates)
+        # bm25c's search() takes neither parallel nor batch_size -- both accepted
+        # here only for TextIndex interface conformance.
+        def convert(rs):
+            return [SearchResult(rank=r.rank, id=r.id, score=r.score, text=r.text) for r in rs]
 
-    def _search_one(self, query: str, k: int, candidates: np.ndarray | None) -> list[SearchResult]:
-        return [
-            SearchResult(rank=r.rank, id=r.id, score=r.score, text=r.text)
-            for r in self._core.search(query, k, candidates=candidates)
-        ]
+        results = self._core.search(query, k, candidates=candidates)
+        if isinstance(query, str):
+            return convert(results)
+        return [convert(rs) for rs in results]
 
     def search_raw(
         self,

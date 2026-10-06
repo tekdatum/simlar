@@ -39,6 +39,7 @@ class StreamingHybridIndex:
         k: int | None = None,
         parallel: bool = True,
         batch_size: int | None = None,
+        candidates: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray]: ...
     def save(self, directory: str, base_dir: str | None = None) -> None: ...
     @classmethod

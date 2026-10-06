@@ -47,7 +47,16 @@ def engine_class(index_type: str, module: str, name: str) -> type:
     def __init__(self, *args, **kwargs):
         require_core(index_type, None)
 
-    return _UnavailableMeta(name, (), {"_index_type": index_type, "__init__": __init__})
+    # Defined outright, not left to _UnavailableMeta: a subclass's `super().load(...)` searches
+    # class dicts only and never reaches the metaclass __getattr__.
+    def load(cls, *args, **kwargs):
+        require_core(index_type, None)
+
+    return _UnavailableMeta(
+        name,
+        (),
+        {"_index_type": index_type, "__init__": __init__, "load": classmethod(load)},
+    )
 
 
 def require_core(index_type: str, core):

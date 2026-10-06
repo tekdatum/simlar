@@ -5,7 +5,54 @@ Dates are in YYYY-MM-DD format.
 
 ## [Unreleased]
 
+### Added
+- `HelixIndex(speed_preference=...)`: "fastest" … "most accurate" (default "balanced").
+  An unset `text_k` / `vector_k` is now tuned by the engine from the corpus size and `top_k`.
+  New read-only `speed_preference` and `expected_recall` properties.
+- Embedding management: `Embedder` protocol (`embed_documents` / `embed_query`, so LangChain
+  `Embeddings` fit as-is) and `CallableEmbedder(fn, query_fn=None, normalize=, batch_size=)`.
+  `SimlarEngine`, `HelixIndex` and `FilteredIndex` take `embedder=`, so `add` / `update` /
+  `fit` / `search` work from text alone (`texts=` / `query_text=` on `SimlarEngine`). Embedders
+  are not persisted; reattach with `load(..., embedder=)`, `load_from_directory(..., embedder=)`
+  or the `embedder` property. Indexes without an embedder behave exactly as before.
+- `FilteredIndex` metadata filtering and role-based access in the LangChain `SimlarVectorStore`:
+  `filter=` (SQL WHERE fragment, LangChain-style dict or `MetadataFilter`) and `roles=` on every
+  search method and through `as_retriever(search_kwargs=...)`; `roles=` on `add_texts` /
+  `add_documents` / `from_texts`; `grant()` / `revoke()`.
+- LangChain `SimlarVectorStore.add_documents`, `delete`, `get_by_ids`,
+  `similarity_search_by_vector`, `similarity_search_with_score_by_vector` and relevance scores
+  (langchain-core 1.x interface).
+- LlamaIndex `SimlarVectorStore` rebuilt on `FilteredIndex`: `MetadataFilters` (all operators
+  incl. `contains` / `any` / `all` / `text_match` / `is_empty`, nested `and` / `or` / `not`),
+  `doc_ids` / `node_ids`, query modes `default` (vector), `sparse` / `text_search` (BM25) and
+  `hybrid`, `roles` via `vector_store_kwargs`, `delete` by `ref_doc_id`, `delete_nodes`,
+  `get_nodes`, `clear`, full node round-trip (metadata, relationships), and
+  `StorageContext.persist()` / `from_persist_dir()` compatibility.
+- `HelixIndex.update()` / `HelixIndex.delete()` (requires simlar-engine with `_HelixCore.update/delete`).
+- Haystack `SimlarDocumentStore` rebuilt on `FilteredIndex(HelixIndex)` (Haystack 3.x):
+  - Haystack `filters` are resolved in SQL before ranking, so results are the exact top-k among
+    matching documents. Semantics match Haystack's reference (`None` for missing fields, ISO-date
+    comparisons, `FilterError` on invalid filters): exact conditions run as one cached SQL query,
+    the rest are narrowed in SQL and checked with `document_matches_filter`.
+  - `roles=` on `write_documents`, `filter_documents` and every retrieval method; `grant()` /
+    `revoke()`.
+  - `embedding_retrieval`, `bm25_retrieval` and `hybrid_retrieval`.
+  - The full extended protocol: `delete_all_documents`, `delete_by_filter`, `update_by_filter`,
+    `count_documents_by_filter`, `count_unique_metadata_by_filter`, `get_metadata_fields_info`,
+    `get_metadata_field_min_max` and `get_metadata_field_unique_values`.
+  - Passes Haystack's `haystack.testing.document_store` suite.
+- Haystack `SimlarEmbeddingRetriever` and `SimlarBM25Retriever` components.
+  `SimlarHybridRetriever` gains `filters`, `filter_policy` (`REPLACE` / `MERGE`), `roles` and
+  `return_embedding`. All three serialize with `to_dict` / `from_dict` and work with
+  `Pipeline.dumps()` / `loads()` (`simlar.integrations.haystack` is added to Haystack's
+  deserialization allowlist on import).
+
 ### Fixed
+- Metadata keys `position` / `id` no longer reach the SQL filter. `position` overwrote the row's
+  position, silently dropping the document from filtered searches (all integrations). SQL keywords
+  (`group`, `order`, ...) and integers beyond 64 bits no longer crash ingestion. These keys and
+  values stay on the returned documents; LangChain / LlamaIndex can't filter on them, while
+  Haystack filters them through `document_matches_filter`.
 - `LookupIndex.search_raw()` defaulted `parallel` to `True`, inconsistent with
   the abstract `TextIndex.search_raw` contract's `False` default and with its
   sibling `RelevanceIndex.search_raw()`. `search_raw` is an internal method
@@ -21,6 +68,41 @@ Dates are in YYYY-MM-DD format.
   (`list[SearchResult] | list[list[SearchResult]]`, the same batch contract
   `TextIndex.search()` already declares) — widened to match, and to accept
   `query_text` as `str | list[str]`.
+
+### Changed
+- Haystack `SimlarDocumentStore` writes go straight to the index. Overwrites update in place and
+  deletes compact, with no tombstones and no second copy of every text. `save()` writes `index/`
+  + `store.json`; directories saved by simlar 1.0 still load (their live documents are
+  re-indexed).
+- Haystack results carry `Document.score` and the original `Document.id`. `meta` no longer gets
+  `score` / `rank` / `doc_id` added.
+- Haystack filters follow Haystack's reference semantics: an unknown operator raises
+  `FilterError` (it used to match nothing).
+- Haystack `get_metadata_field_unique_values(metadata_field, search_term, from_, size, filters)`
+  returns `(values, total)`, and `get_metadata_fields_info` reports `int` rather than `long`,
+  per the Haystack 3 interface.
+- `haystack` extra now requires `haystack-ai>=3.0,<4`.
+- LangChain `SimlarVectorStore` writes are incremental: new ids are appended to the index and
+  re-added ids are updated in place. The store no longer rebuilds the index on every write and no
+  longer keeps a copy of every embedding (~250 MiB less Python memory at 20k x 384-dim documents).
+- `save_local` writes `index/` + `docs.json` (no pickle). Metadata must be JSON-serializable.
+- `langchain` extra now requires `langchain-core>=1.0`; `llama_index` extra requires
+  `llama-index-core>=0.14`.
+- LlamaIndex `SimlarVectorStore` follows LlamaIndex's query-mode convention (as `PGVectorStore`
+  does): `default` is vector-only; pass `vector_store_query_mode="hybrid"` for BM25 + vector
+  (previously `default` ran hybrid whenever `query_str` was set).
+
+### Removed
+- `simlar.integrations.langchain.langchain_retriever.SimlarRetriever` — use
+  `store.as_retriever(search_kwargs={"k": ..., "filter": ..., "roles": ...})`.
+- `simlar.integrations.llama_index.simlar_retriever.SimlarRetriever` — use
+  `VectorStoreIndex.from_vector_store(store).as_retriever(...)`.
+- LlamaIndex `SimlarVectorStore(index, id_to_text, parallel)` and `SimlarVectorStore.from_texts()` —
+  construct with `SimlarVectorStore(text_k=..., vector_k=..., top_k=..., parallel=...)` and add
+  nodes through `VectorStoreIndex` or `store.add(nodes)`. Stores persisted by the old class
+  (`index/` + `id_to_text.json`, no metadata) cannot be loaded.
+- Loading a store saved by simlar 1.0 (`sidecar.pkl`) now requires
+  `load_local(..., allow_dangerous_deserialization=True)`, since it is a pickle.
 
 ## [1.1.0] — 2026-09-02
 

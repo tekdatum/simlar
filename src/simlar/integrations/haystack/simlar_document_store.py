@@ -1,34 +1,69 @@
-"""
-SimlarDocumentStore — a Haystack 2.x DocumentStore backed by simlar's StreamingHelixIndex.
+"""SimlarDocumentStore -- a Haystack 3.x DocumentStore on simlar's FilteredIndex.
 
-Design principles:
-- The store does NOT own an embedder. Documents must arrive with their embedding
-  already set (via an upstream Haystack embedder component). This lets callers
-  swap any embedder: SentenceTransformers, OpenAI, Cohere, etc.
-- At search time, the caller provides both query text and a pre-computed query embedding.
-- The underlying StreamingHelixIndex is append-only; deletions are handled via tombstones.
+Hybrid (BM25 + vector) retrieval over a ``FilteredIndex(HelixIndex)``:
+Haystack ``filters`` (https://docs.haystack.deepset.ai/docs/metadata-filtering)
+and ``roles`` are resolved in SQL to the allowed positions first and passed to
+the index as ``candidates=``, so results are the exact top-k among the allowed
+documents. Writes go straight to the index -- new ids are appended,
+overwritten ids are updated in place, deletes compact -- so nothing is ever
+rebuilt or tombstoned.
+
+The store does not own an embedder: documents must arrive with ``embedding``
+set by an upstream Haystack embedder, and queries bring their own embedding.
+
+Example::
+
+    store = SimlarDocumentStore()
+    store.write_documents(embedded_docs, roles=[["public"]] * len(embedded_docs))
+    store.hybrid_retrieval(
+        "query", query_embedding,
+        filters={"field": "meta.year", "operator": ">=", "value": 2020},
+        roles=["public"],
+    )
 """
 
 from __future__ import annotations
 
+import copy
 import json
-import sys
+from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-from haystack import Document
+from haystack import Document, default_from_dict, default_to_dict, logging
 from haystack.document_stores.errors import DuplicateDocumentError
 from haystack.document_stores.types import DuplicatePolicy
-from haystack.errors import FilterError
+from haystack.utils.filters import document_matches_filter
 
-from simlar.indexes.streaming_index import StreamingHelixIndex
+from simlar.indexes.filtered_index import FilteredIndex
+from simlar.indexes.helix_index import HelixIndex
+from simlar.integrations.haystack._filters import MetaFields, compile_filters
+
+logger = logging.getLogger(__name__)
+
+_INDEX_DIRNAME = "index"
+_STORE_FILENAME = "store.json"
+_FORMAT_VERSION = 2
+
+_Mode = Literal["embedding", "bm25", "hybrid"]
 
 
 class SimlarDocumentStore:
+    """Haystack DocumentStore backed by a simlar ``FilteredIndex(HelixIndex)``.
+
+    Filters follow Haystack's filter syntax and semantics exactly. Conditions
+    SQL can evaluate faithfully run as one cached SQL query; the rest (ISO-date
+    string comparisons, nested or non-scalar metadata, ``content``) narrow the
+    candidates in SQL and are then checked with Haystack's own
+    ``document_matches_filter``.
+
+    ``roles`` restricts results to documents granted to any of those roles
+    (see ``write_documents(roles=...)``, ``grant``, ``revoke``); ``None``
+    skips the access check.
+    """
+
     def __init__(
         self,
         top_k: int = 5,
@@ -39,390 +74,506 @@ class SimlarDocumentStore:
         """
         Args:
             top_k: Default number of documents returned by :meth:`search`.
-            relevance_k: Text candidate pool size fed into RRF.
-            core_k: Vector candidate pool size fed into RRF.
+            relevance_k: Text (BM25) candidate pool size fed into hybrid fusion.
+            core_k: Vector candidate pool size fed into hybrid fusion.
             parallel: Default threading mode for writes and searches. Override
-                per call with the ``parallel`` argument on :meth:`write_documents`
-                and :meth:`search`.
+                per call with ``parallel=``.
         """
         self._top_k = top_k
         self._relevance_k = relevance_k
         self._core_k = core_k
         self._parallel = parallel
-        self._index = StreamingHelixIndex(
-            text_k=relevance_k,
-            vector_k=core_k,
-            top_k=top_k,
-        )
-        self._corpus: list[str] = []
-        self._haystack_docs: list[Document] = []
-        self._deleted_positions: set[int] = set()
-        self._doc_id_to_pos: dict[str, int] = {}
+        self._reset()
 
-    # ── Write ─────────────────────────────────────────────────────────────────
+    def _reset(self) -> None:
+        self._index = FilteredIndex(
+            HelixIndex(text_k=self._relevance_k, vector_k=self._core_k, top_k=self._top_k)
+        )
+        # _docs[p] is the document at index position p.
+        self._docs: list[Document] = []
+        self._pos: dict[str, int] = {}
+        self._fields = MetaFields()
+        self._dim: int | None = None
+
+    @property
+    def index(self) -> FilteredIndex:
+        """The underlying ``FilteredIndex(HelixIndex)``."""
+        return self._index
+
+    # ── Serialization ─────────────────────────────────────────────────────────
+
+    def to_dict(self) -> dict[str, Any]:
+        return default_to_dict(
+            self,
+            top_k=self._top_k,
+            relevance_k=self._relevance_k,
+            core_k=self._core_k,
+            parallel=self._parallel,
+        )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SimlarDocumentStore:
+        return default_from_dict(cls, data)
+
+    # ── Writes ────────────────────────────────────────────────────────────────
 
     def write_documents(
         self,
         documents: list[Document],
         policy: DuplicatePolicy = DuplicatePolicy.NONE,
+        roles: Sequence[Sequence[str]] | None = None,
         parallel: bool | None = None,
     ) -> int:
         """Write documents to the store.
 
         Args:
-            documents: Documents with their ``embedding`` field already set.
-            policy: Haystack duplicate-handling policy.
-            parallel: Thread the index write for this call. Defaults to the
-                store-level setting.
+            documents: Documents with their ``embedding`` already set.
+            policy: What to do with ids already stored. ``NONE`` overwrites,
+                as ``OVERWRITE`` does: the document is replaced in place.
+            roles: Optional list of role lists, one per document, granting
+                those roles access for ``roles=`` retrieval (additive).
+            parallel: Thread the index write. Defaults to the store setting.
+
+        Returns:
+            The number of documents written.
         """
-        to_write: list[Document] = []
+        if not isinstance(documents, (list, tuple)) or any(
+            not isinstance(d, Document) for d in documents
+        ):
+            raise ValueError("Please provide a list of Documents.")
+        if roles is not None and len(roles) != len(documents):
+            raise ValueError(f"roles length {len(roles)} != documents length {len(documents)}")
 
-        for doc in documents:
-            if doc.id in self._doc_id_to_pos:
+        # Resolve duplicates up front, so a FAIL raises before anything is written.
+        chosen: dict[str, int] = {}
+        for i, doc in enumerate(documents):
+            if doc.id in self._pos or doc.id in chosen:
                 if policy == DuplicatePolicy.FAIL:
-                    raise DuplicateDocumentError(f"Document {doc.id!r} already exists")
+                    raise DuplicateDocumentError(f"ID '{doc.id}' already exists.")
                 if policy == DuplicatePolicy.SKIP:
+                    logger.warning("ID '{document_id}' already exists", document_id=doc.id)
                     continue
-                # OVERWRITE / NONE: tombstone old position so it is hidden from queries
-                self._deleted_positions.add(self._doc_id_to_pos[doc.id])
-            if doc.embedding is None:
-                raise ValueError(
-                    f"Document {doc.id!r} has no embedding. "
-                    "Run a Haystack embedder component before writing to SimlarDocumentStore."
+            chosen[doc.id] = i  # OVERWRITE / NONE: the last occurrence wins
+        # Per the protocol, only SKIP reports fewer documents than it was given.
+        written = len(chosen) if policy == DuplicatePolicy.SKIP else len(documents)
+        if not chosen:
+            return written
+
+        order = list(chosen.values())
+        docs = [documents[i] for i in order]
+        vectors = self._vectors(docs)
+        # Stored copies own their meta dict, so a caller mutating the documents
+        # it passed in can't drift from the metadata indexed in SQL.
+        stored = [replace(d, meta=dict(d.meta)) for d in docs]
+        parallel = self._parallel if parallel is None else parallel
+        new = [j for j, d in enumerate(docs) if d.id not in self._pos]
+        old = [j for j, d in enumerate(docs) if d.id in self._pos]
+
+        fields_before = copy.deepcopy(self._fields)
+        try:
+            if new:
+                self._index.add(
+                    [docs[j].id for j in new],
+                    [docs[j].content or "" for j in new],
+                    vectors if len(new) == len(docs) else vectors[new],
+                    metadata=[self._fields.sql_metadata(docs[j].meta) for j in new],
+                    roles=None if roles is None else [list(roles[order[j]]) for j in new],
+                    parallel=parallel,
                 )
-            to_write.append(doc)
+                for j in new:
+                    self._pos[docs[j].id] = len(self._docs)
+                    self._docs.append(stored[j])
+            if old:
+                self._index.update(
+                    [docs[j].id for j in old],
+                    [docs[j].content or "" for j in old],
+                    vectors if len(old) == len(docs) else vectors[old],
+                    metadata=[self._replacement(docs[j]) for j in old],
+                )
+                for j in old:
+                    self._docs[self._pos[docs[j].id]] = stored[j]
+                    if roles is not None and roles[order[j]]:
+                        self._index.grant([docs[j].id], list(roles[order[j]]))
+        except BaseException:
+            self._fields = fields_before
+            raise
+        if self._dim is None:
+            self._dim = vectors.shape[1]
+        return written
 
-        if not to_write:
+    def _vectors(self, docs: list[Document]) -> np.ndarray:
+        missing = [d.id for d in docs if d.embedding is None]
+        if missing:
+            raise ValueError(
+                f"Documents {missing} have no embedding. "
+                "Run a Haystack embedder component before writing to SimlarDocumentStore."
+            )
+        try:
+            vectors = np.asarray([d.embedding for d in docs], dtype=np.float32)
+        except ValueError:
+            raise ValueError("All document embeddings must have the same dimension.") from None
+        if vectors.ndim != 2 or vectors.shape[1] == 0:
+            raise ValueError("Document embeddings must be non-empty lists of floats.")
+        if self._dim is not None and vectors.shape[1] != self._dim:
+            raise ValueError(
+                f"Embedding dimension {vectors.shape[1]} does not match the store's {self._dim}."
+            )
+        return vectors
+
+    def _replacement(self, doc: Document) -> dict[str, Any]:
+        """SQL metadata patch replacing the stored doc's metadata with `doc`'s:
+        keys the new metadata drops are cleared."""
+        old = self._docs[self._pos[doc.id]]
+        patch = dict.fromkeys(self._fields.sql_metadata(old.meta))
+        patch.update(self._fields.sql_metadata(doc.meta))
+        return patch
+
+    def delete_documents(self, document_ids: list[str]) -> None:
+        """Delete documents by id. Unknown ids are ignored."""
+        doomed = [i for i in dict.fromkeys(document_ids) if i in self._pos]
+        if not doomed:
+            return
+        if len(doomed) == len(self._docs):
+            # The BM25 core refuses to delete its last document; start fresh.
+            self.delete_all_documents()
+            return
+        self._index.delete(doomed)
+        gone = set(doomed)
+        self._docs = [d for d in self._docs if d.id not in gone]
+        self._pos = {d.id: p for p, d in enumerate(self._docs)}
+
+    def delete_all_documents(self) -> None:
+        """Delete every document."""
+        self._reset()
+
+    def delete_by_filter(self, filters: dict[str, Any]) -> int:
+        """Delete all documents matching `filters`. Returns the number deleted."""
+        ids = [d.id for d in self._matching(filters)]
+        self.delete_documents(ids)
+        return len(ids)
+
+    def update_by_filter(self, filters: dict[str, Any], meta: dict[str, Any]) -> int:
+        """Merge `meta` into the metadata of all documents matching `filters`.
+        Returns the number updated."""
+        allowed = self._allowed(filters, None)
+        positions = range(len(self._docs)) if allowed is None else allowed.tolist()
+        if not positions:
             return 0
+        patch = self._fields.sql_metadata(meta)
+        ids = []
+        for p in positions:
+            doc = self._docs[p]
+            self._docs[p] = replace(doc, meta={**doc.meta, **meta})
+            ids.append(doc.id)
+        if patch:
+            self._index.update_metadata(ids, [patch] * len(ids))
+        return len(ids)
 
-        texts = [d.content or "" for d in to_write]
-        vectors = np.array([d.embedding for d in to_write], dtype=np.float32)
+    def grant(self, document_ids: list[str], roles: list[str]) -> None:
+        """Let documents be returned to retrievals made with any of `roles`."""
+        self._index.grant(document_ids, roles)
 
-        base_pos = len(self._corpus)
-        self._index.add_batch(texts, vectors, self._parallel if parallel is None else parallel)
-        self._corpus.extend(texts)
-        self._haystack_docs.extend(to_write)
-        for i, doc in enumerate(to_write):
-            self._doc_id_to_pos[doc.id] = base_pos + i
+    def revoke(self, document_ids: list[str], roles: list[str]) -> None:
+        """Remove `roles`' access to documents."""
+        self._index.revoke(document_ids, roles)
 
-        return len(to_write)
+    # ── Filtering ─────────────────────────────────────────────────────────────
 
-    # ── Search ────────────────────────────────────────────────────────────────
+    def _allowed(
+        self, filters: dict[str, Any] | None, roles: Sequence[str] | None
+    ) -> np.ndarray | None:
+        """Sorted positions matching `filters` and `roles`; None means all."""
+        metadata_filter, exact = compile_filters(filters, self._fields) if filters else (None, True)
+        if metadata_filter is None and roles is None:
+            positions = None
+        else:
+            positions = self._index.candidates(
+                metadata_filter, None if roles is None else list(roles)
+            )
+        if exact:
+            return positions
+        candidates = range(len(self._docs)) if positions is None else positions.tolist()
+        return np.fromiter(
+            (p for p in candidates if document_matches_filter(filters, self._docs[p])),  # type: ignore[arg-type]
+            dtype=np.int64,
+        )
+
+    def _matching(
+        self, filters: dict[str, Any] | None, roles: Sequence[str] | None = None
+    ) -> list[Document]:
+        positions = self._allowed(filters, roles)
+        if positions is None:
+            return list(self._docs)
+        return [self._docs[p] for p in positions.tolist()]
+
+    def filter_documents(
+        self, filters: dict[str, Any] | None = None, roles: Sequence[str] | None = None
+    ) -> list[Document]:
+        """Documents matching `filters` (Haystack filter syntax) and visible to
+        `roles`, in insertion order."""
+        return [replace(d, meta=dict(d.meta)) for d in self._matching(filters, roles)]
+
+    def count_documents(self) -> int:
+        return len(self._docs)
+
+    def count_documents_by_filter(self, filters: dict[str, Any]) -> int:
+        positions = self._allowed(filters, None)
+        return len(self._docs) if positions is None else int(positions.size)
+
+    # ── Metadata introspection ────────────────────────────────────────────────
+
+    def count_unique_metadata_by_filter(
+        self, filters: dict[str, Any], metadata_fields: list[str]
+    ) -> dict[str, int]:
+        """Number of unique values per metadata field among documents matching
+        `filters`. Field names may include the ``meta.`` prefix."""
+        docs = self._matching(filters)
+        result: dict[str, int] = {}
+        for name in metadata_fields:
+            key = name.removeprefix("meta.")
+            result[key] = len({_hashable(d.meta[key]) for d in docs if d.meta.get(key) is not None})
+        return result
+
+    def get_metadata_fields_info(self) -> dict[str, dict[str, str]]:
+        """Metadata fields with types inferred from stored values
+        (``keyword``, ``int``, ``float``, ``boolean``)."""
+        types: dict[str, str] = {}
+        for doc in self._docs:
+            for key, value in doc.meta.items():
+                if value is None:
+                    continue
+                if isinstance(value, bool):
+                    types[key] = "boolean"
+                elif isinstance(value, int):
+                    types[key] = "int"
+                elif isinstance(value, float):
+                    types[key] = "float"
+                else:
+                    types[key] = "keyword"
+        return {key: {"type": t} for key, t in types.items()}
+
+    def get_metadata_field_min_max(self, metadata_field: str) -> dict[str, Any]:
+        """Min and max of a metadata field across all documents; both None if
+        the field has no comparable values."""
+        key = metadata_field.removeprefix("meta.")
+        values = [d.meta[key] for d in self._docs if isinstance(d.meta.get(key), (int, float, str))]
+        try:
+            return (
+                {"min": min(values), "max": max(values)} if values else {"min": None, "max": None}
+            )
+        except TypeError:
+            return {"min": None, "max": None}
+
+    def get_metadata_field_unique_values(
+        self,
+        metadata_field: str,
+        search_term: str | None = None,
+        from_: int = 0,
+        size: int = 10,
+        filters: dict[str, Any] | None = None,
+    ) -> tuple[list[Any], int]:
+        """A page of the unique values of a metadata field, and the total number
+        of unique values. `search_term` keeps values containing it
+        (case-insensitive); `filters` restricts the documents considered."""
+        key = metadata_field.removeprefix("meta.")
+        unique: dict[tuple[str, Any], Any] = {}
+        for doc in self._matching(filters):
+            value = doc.meta.get(key)
+            if value is not None:
+                unique.setdefault((type(value).__name__, _hashable(value)), value)
+        if search_term:
+            term = search_term.lower()
+            unique = {k: v for k, v in unique.items() if term in str(v).lower()}
+        ordered = sorted(unique, key=lambda k: (str(unique[k]), k[0]))
+        return [unique[k] for k in ordered[from_ : from_ + size]], len(ordered)
+
+    # ── Retrieval ─────────────────────────────────────────────────────────────
+
+    def embedding_retrieval(
+        self,
+        query_embedding: list[float],
+        filters: dict[str, Any] | None = None,
+        top_k: int = 10,
+        roles: Sequence[str] | None = None,
+        return_embedding: bool = False,
+        parallel: bool | None = None,
+    ) -> list[Document]:
+        """Vector search, restricted to documents matching `filters` and `roles`.
+        Scores are similarities, higher is better."""
+        return self._retrieve(
+            "embedding", None, query_embedding, filters, top_k, roles, return_embedding, parallel
+        )
+
+    def bm25_retrieval(
+        self,
+        query: str,
+        filters: dict[str, Any] | None = None,
+        top_k: int = 10,
+        roles: Sequence[str] | None = None,
+        return_embedding: bool = False,
+        parallel: bool | None = None,
+    ) -> list[Document]:
+        """BM25 keyword search, restricted to documents matching `filters` and
+        `roles`. Documents scoring 0 (no query term) are not returned."""
+        return self._retrieve(
+            "bm25", query, None, filters, top_k, roles, return_embedding, parallel
+        )
+
+    def hybrid_retrieval(
+        self,
+        query: str,
+        query_embedding: list[float],
+        filters: dict[str, Any] | None = None,
+        top_k: int = 10,
+        roles: Sequence[str] | None = None,
+        return_embedding: bool = False,
+        parallel: bool | None = None,
+    ) -> list[Document]:
+        """BM25 + vector search fused with RRF, restricted to documents matching
+        `filters` and `roles`. Scores are fused, higher is better."""
+        return self._retrieve(
+            "hybrid", query, query_embedding, filters, top_k, roles, return_embedding, parallel
+        )
 
     def search(
         self,
         query_text: str,
         query_embedding: list[float],
         top_k: int | None = None,
-        filters: dict | None = None,
+        filters: dict[str, Any] | None = None,
         parallel: bool | None = None,
     ) -> list[Document]:
-        """Hybrid search. Both query_text and query_embedding are required.
-
-        Args:
-            query_text: Raw query string
-            query_embedding: Pre-computed query vector (must match indexed document dimension).
-            top_k: Override the store-level top_k for this query.
-            filters: Optional Haystack filter dict applied post-retrieval.
-            parallel: Thread this search. Defaults to the store-level setting.
-
-        Returns:
-            List of Haystack Documents ranked by RRF-fused score, with original metadata preserved.
-        """
-        if not self._corpus:
-            return []
-
-        k = top_k or self._top_k
-        # Fetch extra candidates to compensate for tombstoned / filtered-out results
-        fetch_k = min(len(self._corpus), k * 10) if (self._deleted_positions or filters) else k
-        query_vector = np.array(query_embedding, dtype=np.float32)
-
-        ids, scores = self._index.search(
-            query_text=query_text,
-            query_vector=query_vector,
-            k=fetch_k,
-            parallel=self._parallel if parallel is None else parallel,
+        """Hybrid search with the store-level ``top_k`` default; see
+        :meth:`hybrid_retrieval`."""
+        return self.hybrid_retrieval(
+            query_text,
+            query_embedding,
+            filters=filters,
+            top_k=top_k or self._top_k,
+            parallel=parallel,
         )
 
-        results: list[Document] = []
-        for doc_id, score in zip(ids, scores, strict=False):
-            pos = int(doc_id)
-            if pos in self._deleted_positions:
-                continue
-            orig = self._haystack_docs[pos]
-            if filters and not self._matches_filters(orig, filters):
-                continue
-            results.append(
-                Document(
-                    content=self._corpus[pos],
-                    meta={
-                        **orig.meta,
-                        "rank": len(results) + 1,
-                        "doc_id": pos,
-                        "score": float(score),
-                    },
+    def _retrieve(
+        self,
+        mode: _Mode,
+        query: str | None,
+        query_embedding: list[float] | None,
+        filters: dict[str, Any] | None,
+        top_k: int,
+        roles: Sequence[str] | None,
+        return_embedding: bool,
+        parallel: bool | None,
+    ) -> list[Document]:
+        if top_k <= 0 or not self._docs:
+            return []
+        allowed = self._allowed(filters, roles)
+        n = len(self._docs) if allowed is None else int(allowed.size)
+        if n == 0:
+            return []
+        kwargs: dict[str, Any] = {
+            "k": min(top_k, n),
+            "parallel": self._parallel if parallel is None else parallel,
+        }
+        if allowed is not None:
+            kwargs["candidates"] = allowed
+        vector = None if query_embedding is None else np.asarray(query_embedding, dtype=np.float32)
+
+        if mode == "embedding":
+            results = self._index.vector_index.search(vector, **kwargs)
+        elif mode == "bm25":
+            results = [r for r in self._index.text_index.search(query, **kwargs) if r.score > 0]
+        else:
+            results = self._index.search(query_text=query, query_vector=vector, **kwargs)
+
+        out = []
+        for r in results:
+            doc = self._docs[self._pos[r.id]]
+            out.append(
+                replace(
+                    doc,
+                    meta=dict(doc.meta),
+                    score=float(r.score),
+                    embedding=doc.embedding if return_embedding else None,
                 )
             )
-            if len(results) >= k:
-                break
-
-        return results
-
-    # ── Delete ────────────────────────────────────────────────────────────────
-
-    def delete_documents(self, document_ids: list[str]) -> None:
-        """Tombstone documents by ID. The append-only index is not modified."""
-        for doc_id in document_ids:
-            pos = self._doc_id_to_pos.pop(doc_id, None)
-            if pos is not None:
-                self._deleted_positions.add(pos)
-
-    def delete_all_documents(self) -> None:
-        """Reset the store and rebuild the index from scratch."""
-        self._index = StreamingHelixIndex(
-            text_k=self._relevance_k,
-            vector_k=self._core_k,
-            top_k=self._top_k,
-        )
-        self._corpus = []
-        self._haystack_docs = []
-        self._deleted_positions = set()
-        self._doc_id_to_pos = {}
-
-    def delete_by_filter(self, filters: dict[str, Any]) -> int:
-        """Delete all documents matching filters. Returns the number deleted."""
-        docs = self.filter_documents(filters)
-        self.delete_documents([doc.id for doc in docs])
-        return len(docs)
-
-    # ── Filter / Count ────────────────────────────────────────────────────────
-
-    def filter_documents(self, filters: dict | None = None) -> list[Document]:
-        active = [
-            self._haystack_docs[pos]
-            for pos in range(len(self._haystack_docs))
-            if pos not in self._deleted_positions
-        ]
-        if not filters:
-            return active
-        return [doc for doc in active if self._matches_filters(doc, filters)]
-
-    def count_documents(self) -> int:
-        return len(self._haystack_docs) - len(self._deleted_positions)
-
-    def count_documents_by_filter(self, filters: dict[str, Any]) -> int:
-        return len(self.filter_documents(filters))
-
-    # ── Update ────────────────────────────────────────────────────────────────
-
-    def update_by_filter(self, filters: dict[str, Any], meta: dict[str, Any]) -> int:
-        """Update metadata in-place for all documents matching filters. Returns count updated."""
-        docs = self.filter_documents(filters)
-        for doc in docs:
-            doc.meta.update(meta)
-        return len(docs)
-
-    # ── Metadata introspection ────────────────────────────────────────────────
-
-    def get_metadata_fields_info(self) -> dict[str, dict[str, Any]]:
-        """Infer and return the types of all metadata fields from active documents."""
-        fields: dict[str, dict[str, Any]] = {}
-        for doc in self.filter_documents():
-            for key, value in doc.meta.items():
-                if key not in fields:
-                    type_name = type(value).__name__
-                    if type_name == "str":
-                        type_name = "keyword"
-                    elif type_name == "int":
-                        type_name = "long"
-                    elif type_name == "bool":
-                        type_name = "boolean"
-                    fields[key] = {"type": type_name}
-        return fields
-
-    def get_metadata_field_min_max(self, field_name: str) -> dict[str, Any]:
-        """Return the min and max for a metadata field across active documents."""
-        values = [
-            v
-            for doc in self.filter_documents()
-            if (v := self._get_doc_value(doc, field_name)) is not None
-        ]
-        if not values:
-            return {"min": None, "max": None}
-        return {"min": min(values), "max": max(values)}
-
-    def get_metadata_field_unique_values(self, field_name: str) -> list[Any]:
-        """Return all unique non-None values for a metadata field across active documents."""
-        seen: set = set()
-        for doc in self.filter_documents():
-            v = self._get_doc_value(doc, field_name)
-            if v is not None:
-                seen.add(v)
-        return list(seen)
-
-    def count_unique_metadata_by_filter(
-        self, filters: dict[str, Any], metadata_fields: list[str]
-    ) -> dict[str, int]:
-        """Return count of unique values per field for documents matching filters."""
-        docs = self.filter_documents(filters)
-        return {
-            field: len({v for doc in docs if (v := self._get_doc_value(doc, field)) is not None})
-            for field in metadata_fields
-        }
+        return out
 
     # ── Persistence ───────────────────────────────────────────────────────────
 
     def save(self, path: str | Path) -> None:
-        """Persist the index and document metadata to a directory.
+        """Save the store to a directory.
 
-        Args:
-            path: Directory to write into. Created if it does not exist.
+        Layout::
+
+            <path>/
+                index/      <- FilteredIndex: HelixIndex + SQLFilter (metadata, roles)
+                store.json  <- documents (in index order) and store settings
+
+        Metadata must be JSON-serializable.
         """
         root = Path(path)
         root.mkdir(parents=True, exist_ok=True)
-
-        self._index.save(str(root / "index"))
-
-        data = {
-            "corpus": self._corpus,
-            "documents": [doc.to_dict() for doc in self._haystack_docs],
-            "deleted_positions": list(self._deleted_positions),
-            "doc_id_to_pos": self._doc_id_to_pos,
-            "init_parameters": {
-                "top_k": self._top_k,
-                "relevance_k": self._relevance_k,
-                "core_k": self._core_k,
-                "parallel": self._parallel,
+        if self._docs:
+            self._index.save(str(root / _INDEX_DIRNAME))
+        payload = {
+            "format_version": _FORMAT_VERSION,
+            "init_parameters": self.to_dict()["init_parameters"],
+            "documents": [d.to_dict(flatten=False) for d in self._docs],
+            "fields": {
+                "kinds": {k: sorted(v) for k, v in self._fields.kinds.items()},
+                "columns": self._fields.columns,
             },
         }
-        with open(root / "store.json", "w", encoding="utf-8") as f:
-            json.dump(data, f)
+        try:
+            text = json.dumps(payload, ensure_ascii=False)
+        except TypeError as e:
+            raise TypeError(
+                f"SimlarDocumentStore metadata must be JSON-serializable: {e}"
+            ) from None
+        (root / _STORE_FILENAME).write_text(text, encoding="utf-8")
 
     @classmethod
     def load(cls, path: str | Path) -> SimlarDocumentStore:
-        """Load a previously saved store from a directory.
-
-        Args:
-            path: Directory previously written by :meth:`save`.
+        """Load a store saved with :meth:`save`, including the pre-FilteredIndex
+        layout (whose live documents are re-indexed).
 
         Raises:
-            ValueError: If the directory or required files are missing.
+            ValueError: If no saved store is found, or the index and the
+                documents disagree.
         """
         root = Path(path)
-        store_file = root / "store.json"
+        store_file = root / _STORE_FILENAME
         if not store_file.exists():
             raise ValueError(f"No saved store found at {root}")
+        data = json.loads(store_file.read_text(encoding="utf-8"))
+        store = cls(**data["init_parameters"])
+        documents = [Document.from_dict(d) for d in data["documents"]]
 
-        with open(store_file, encoding="utf-8") as f:
-            data = json.load(f)
+        if "format_version" not in data:
+            # simlar <= 1.0: an append-only index plus tombstoned positions.
+            deleted = set(data.get("deleted_positions", ()))
+            live = [d for p, d in enumerate(documents) if p not in deleted]
+            store.write_documents(live, policy=DuplicatePolicy.OVERWRITE)
+            return store
 
-        params = data["init_parameters"]
-        obj = cls(**params)
-        obj._index = StreamingHelixIndex.load(str(root / "index"))
-        obj._corpus = data["corpus"]
-        obj._haystack_docs = [Document.from_dict(d) for d in data["documents"]]
-        obj._deleted_positions = set(data["deleted_positions"])
-        obj._doc_id_to_pos = data["doc_id_to_pos"]
-        return obj
+        if documents:
+            store._index = FilteredIndex.load(str(root / _INDEX_DIRNAME))
+            if store._index.ids != [d.id for d in documents]:
+                raise ValueError(f"Corrupted store at {root}: index and documents disagree.")
+            store._dim = len(documents[0].embedding or ()) or None
+        store._docs = documents
+        store._pos = {d.id: p for p, d in enumerate(documents)}
+        store._fields = MetaFields(
+            kinds={k: set(v) for k, v in data["fields"]["kinds"].items()},
+            columns=dict(data["fields"]["columns"]),
+        )
+        return store
 
-    # ── DocumentStore protocol ────────────────────────────────────────────────
 
-    def to_dict(self) -> dict:
-        return {
-            "type": f"{self.__class__.__module__}.{self.__class__.__name__}",
-            "init_parameters": {
-                "top_k": self._top_k,
-                "relevance_k": self._relevance_k,
-                "core_k": self._core_k,
-                "parallel": self._parallel,
-            },
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> SimlarDocumentStore:
-        return cls(**data.get("init_parameters", {}))
-
-    # ── Filter helpers (Haystack filter DSL) ──────────────────────────────────
-
-    def _matches_filters(self, doc: Document, filters: dict[str, Any]) -> bool:
-        return self._check_condition(doc, filters)
-
-    @staticmethod
-    def _get_doc_value(doc: Document, field: str) -> Any:
-        if field == "content":
-            return doc.content
-        if field == "id":
-            return doc.id
-        if field.startswith("meta."):
-            return doc.meta.get(field[5:])
-        if hasattr(doc, field):
-            return getattr(doc, field)
-        return doc.meta.get(field)
-
-    def _check_condition(self, doc: Document, condition: dict[str, Any]) -> bool:
-        if "operator" not in condition and "conditions" not in condition:
-            raise FilterError("Filter condition missing 'operator'")
-
-        operator = condition.get("operator", "==")
-
-        if operator == "AND":
-            if "conditions" not in condition:
-                raise FilterError("Missing 'conditions' for AND operator")
-            return all(self._check_condition(doc, c) for c in condition["conditions"])
-        if operator == "OR":
-            if "conditions" not in condition:
-                raise FilterError("Missing 'conditions' for OR operator")
-            return any(self._check_condition(doc, c) for c in condition["conditions"])
-        if operator == "NOT":
-            if "conditions" not in condition:
-                raise FilterError("Missing 'conditions' for NOT operator")
-            conditions = condition["conditions"]
-            if not isinstance(conditions, list) or not conditions:
-                raise FilterError("NOT operator expects at least one condition")
-            return not all(self._check_condition(doc, c) for c in conditions)
-
-        # Leaf condition
-        if "field" not in condition:
-            raise FilterError("Missing 'field' in filter condition")
-        field = condition["field"]
-        if not isinstance(field, str):
-            raise FilterError("'field' in filter condition must be a string")
-        if "value" not in condition:
-            raise FilterError("Missing 'value' in filter condition")
-        value = condition["value"]
-
-        doc_val = self._get_doc_value(doc, field)
-
-        if operator in (">", ">=", "<", "<="):
-            if doc_val is None or value is None:
-                return False
-            is_number = lambda v: isinstance(v, (int, float))  # noqa: E731
-            if not (is_number(doc_val) and is_number(value)) and type(doc_val) is not type(value):
-                raise FilterError(
-                    f"Type mismatch: cannot compare {type(doc_val)} with {type(value)}"
-                )
-            try:
-                if operator == ">":
-                    return doc_val > value
-                if operator == ">=":
-                    return doc_val >= value
-                if operator == "<":
-                    return doc_val < value
-                return doc_val <= value
-            except TypeError as e:
-                raise FilterError(f"Type mismatch in filter: {e}") from e
-
-        if operator == "==":
-            return doc_val == value
-        if operator == "!=":
-            return doc_val != value
-        if operator == "in":
-            if not isinstance(value, list):
-                raise FilterError("Value for 'in' must be a list")
-            return doc_val in value
-        if operator == "not in":
-            if not isinstance(value, list):
-                raise FilterError("Value for 'not in' must be a list")
-            return doc_val not in value
-
-        return False
+def _hashable(value: Any) -> Any:
+    """A hashable stand-in for a metadata value, keeping 1, 1.0, True and "1" apart."""
+    try:
+        hash(value)
+        return (type(value).__name__, value)
+    except TypeError:
+        return (type(value).__name__, json.dumps(value, sort_keys=True, default=str))

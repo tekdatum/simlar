@@ -1,20 +1,24 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from simlar._engine import engine_class, engine_core
 from simlar.indexes.registry import load_from_directory, register
 
 # The engine's filtering types. On an engine build without filtering these are stand-ins that
 # raise IndexUnavailableError when used; FilterError stays a real exception so `except` works.
+# Type checkers see the real engine classes so they stay usable in annotations.
 _EngineFilteredIndex: Any = engine_class("filtered", "simlar_engine", "FilteredIndex")
-SQLFilter = engine_class("filtered", "simlar_engine", "SQLFilter")
-MetadataFilter = engine_class("filtered", "simlar_engine", "MetadataFilter")
-FilterError: Any = engine_core("filtered", "simlar_engine", "FilterError")
-if FilterError is None:
+if TYPE_CHECKING:
+    from simlar_engine import FilterError, MetadataFilter, SQLFilter
+else:
+    SQLFilter = engine_class("filtered", "simlar_engine", "SQLFilter")
+    MetadataFilter = engine_class("filtered", "simlar_engine", "MetadataFilter")
+    FilterError = engine_core("filtered", "simlar_engine", "FilterError")
+    if FilterError is None:
 
-    class FilterError(ValueError):  # type: ignore[no-redef]
-        """Stand-in: this engine build has no filtering, so nothing raises it."""
+        class FilterError(ValueError):
+            """Stand-in: this engine build has no filtering, so nothing raises it."""
 
 
 @register("filtered")
@@ -46,3 +50,21 @@ class FilteredIndex(_EngineFilteredIndex):
 
     # Load the inner index back as the simlar wrapper it was saved from.
     _load_inner = staticmethod(load_from_directory)
+
+    @classmethod
+    def load(cls, directory: str, base_dir=None, *, embedder=None) -> FilteredIndex:
+        obj = super().load(directory) if base_dir is None else super().load(directory, base_dir)
+        if embedder is not None:
+            obj.embedder = embedder
+        return obj
+
+    # The inner index owns the embedder; __getattr__ only forwards reads.
+    @property
+    def embedder(self):
+        return getattr(self.inner, "embedder", None)
+
+    @embedder.setter
+    def embedder(self, value) -> None:
+        if not hasattr(self.inner, "embedder"):
+            raise TypeError(f"{type(self.inner).__name__} does not take an embedder")
+        self.inner.embedder = value

@@ -1,5 +1,6 @@
 from simlar._engine import IndexUnavailableError, unavailable_indexes
 from simlar.contracts import SearchResult, TextIndex, VectorIndex
+from simlar.embeddings import CallableEmbedder, Embedder
 from simlar.fusion import ReciprocalRankFusion
 from simlar.indexes.bm25c_index import BM25CIndex
 from simlar.indexes.filtered_index import FilteredIndex, FilterError, MetadataFilter, SQLFilter
@@ -49,6 +50,9 @@ __all__ = [
     "SearchResult",
     "TextIndex",
     "VectorIndex",
+    # Embeddings
+    "Embedder",
+    "CallableEmbedder",
     # Fusion
     "ReciprocalRankFusion",
     # Indexes
