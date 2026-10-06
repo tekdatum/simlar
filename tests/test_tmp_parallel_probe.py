@@ -22,14 +22,8 @@ def spy():
 
         def make(orig=orig, label=label):
             def f(self, *a, **kw):
-                if "parallel" in kw:
-                    p = kw["parallel"]
-                else:
-                    # `parallel` isn't always the last positional arg anymore
-                    # (e.g. `_HelixCore.search`'s trailing `batch_size`), so
-                    # scan from the end for the last bool rather than assuming
-                    # a fixed position.
-                    p = next((x for x in reversed(a) if isinstance(x, bool)), "MISSING")
+                # parallel is the only bool positional; batch_size/candidates may follow it.
+                p = kw.get("parallel", next((x for x in a if isinstance(x, bool)), "MISSING"))
                 SEEN.append((label, p))
                 return orig(self, *a, **kw)
 
@@ -64,8 +58,6 @@ VECS = np.ones((2, 8), dtype=np.float32)
 
 
 def test_langchain():
-    pytest.importorskip("langchain_core", reason="langchain-core not installed")
-    from simlar.integrations.langchain.langchain_retriever import SimlarRetriever
     from simlar.integrations.langchain.simlar_vector_store import SimlarVectorStore
 
     SEEN.clear()
@@ -74,12 +66,11 @@ def test_langchain():
     s.add_texts(["x y"], parallel=True)
     s.similarity_search("hello", k=2)
     s.similarity_search_with_score("hello", k=2, parallel=True)
-    SimlarRetriever(vector_store=s, k=2, parallel=True).invoke("hello")
+    s.as_retriever(search_kwargs={"k": 2, "parallel": True}).invoke("hello")
     assert [p for _, p in SEEN] == [False, True, False, True, True], SEEN
 
 
 def test_haystack():
-    pytest.importorskip("haystack", reason="haystack-ai not installed")
     from haystack import Document
 
     from simlar.integrations.haystack.simlar_document_store import SimlarDocumentStore
@@ -98,17 +89,16 @@ def test_haystack():
 
 
 def test_llamaindex():
-    pytest.importorskip("llama_index.core", reason="llama-index-core not installed")
+    from llama_index.core.schema import TextNode
     from llama_index.core.vector_stores.types import VectorStoreQuery
 
-    from simlar.integrations.llama_index.simlar_retriever import SimlarRetriever
     from simlar.integrations.llama_index.simlar_vector_store import SimlarVectorStore
 
     SEEN.clear()
-    st = SimlarVectorStore.from_texts(TEXTS, IDS, VECS, parallel=False)
+    st = SimlarVectorStore(parallel=False)
+    st.add([TextNode(id_=i, text=t, embedding=[1.0] * 8) for i, t in zip(IDS, TEXTS, strict=True)])
+    st.add([TextNode(id_="c", text="x y", embedding=[1.0] * 8)], parallel=True)
     q = VectorStoreQuery(query_embedding=[1.0] * 8, query_str="hello", similarity_top_k=2)
     st.query(q)
     st.query(q, parallel=True)
-    r = SimlarRetriever.from_texts(TEXTS, IDS, VECS, embed_model=E(), k=2, parallel=True)
-    r.retrieve("hello")
-    assert [p for _, p in SEEN] == [False, False, True, True, True], SEEN
+    assert [p for _, p in SEEN] == [False, True, False, True], SEEN

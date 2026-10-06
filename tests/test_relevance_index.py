@@ -62,6 +62,23 @@ class TestSearch:
         assert len(ids) == 2
 
 
+class TestCandidates:
+    def test_search_raw_restricts_to_candidates(self):
+        index = _make_index()
+        ids, _ = index.search_raw("hello", 3, candidates=np.array([1, 2]))
+        assert set(ids.tolist()) == {1, 2}
+
+    def test_search_raw_candidates_excludes_real_match(self):
+        index = _make_index()
+        ids, _ = index.search_raw("hello", 3, candidates=np.array([1, 2]))
+        assert 0 not in ids.tolist()
+
+    def test_search_candidates_forwards_from_search(self):
+        index = _make_index()
+        results = index.search("hello", 3, candidates=np.array([1]))
+        assert [r.id for r in results] == ["b"]
+
+
 class TestMetadata:
     def test_index_type(self):
         assert _make_index().index_type == "relevance"

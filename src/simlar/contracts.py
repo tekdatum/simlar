@@ -75,9 +75,23 @@ class TextIndex(Index):
 
     @abstractmethod
     def search(
-        self, query: str | list[str], k: int, parallel: bool = True, batch_size: int | None = None
+        self,
+        query: str | list[str],
+        k: int,
+        parallel: bool = True,
+        batch_size: int | None = None,
+        candidates: np.ndarray | None = None,
     ) -> list[SearchResult] | list[list[SearchResult]]:
-        """Rank documents against query. `parallel` threads a batch of queries."""
+        """Rank documents against query. `parallel` threads a batch of queries.
+
+        `candidates`, if given, is a single flat array of positions applied
+        to EVERY query in a batch call -- not a per-query restriction like
+        `VectorIndex.search_raw`'s `candidates` (used for Helix's per-query
+        text->vector cascade). A backend that can restrict a search this
+        cheaply doesn't need a per-query shape here: the one caller that
+        needs it (SQLFilter-style pre-filtering) always applies the same
+        filter to every query in a batch.
+        """
 
     # ── Internal ───────────────────────────────────────────────────────────────
 
@@ -91,9 +105,11 @@ class TextIndex(Index):
         queries: str | list[str],
         k: int,
         parallel: bool = True,
+        candidates: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Return (ids, scores) shaped (n_queries, k), int64/float64.
-        Used internally by HelixIndex._search_raw().
+        Used internally by HelixIndex._search_raw(). See `search`'s
+        docstring for what `candidates` does.
         """
 
 
@@ -111,9 +127,20 @@ class VectorIndex(Index):
 
     @abstractmethod
     def search(
-        self, query: np.ndarray, k: int, parallel: bool = True, batch_size: int | None = None
+        self,
+        query: np.ndarray,
+        k: int,
+        parallel: bool = True,
+        batch_size: int | None = None,
+        candidates: np.ndarray | None = None,
     ) -> list[SearchResult]:
-        """Rank documents against query. `parallel` threads a batch of queries."""
+        """Rank documents against query. `parallel` threads a batch of queries.
+
+        `candidates`, if given, is a single flat array of positions applied
+        to every query -- the same pre-filter contract as `TextIndex.search`
+        (used by FilteredIndex). Fewer allowed documents than `k` means
+        fewer results.
+        """
 
     @abstractmethod
     def update(self, ids: list[str], vectors: np.ndarray) -> None:
@@ -142,6 +169,10 @@ class VectorIndex(Index):
     ) -> tuple[np.ndarray, np.ndarray]:
         """Return (ids, distances) shaped (n_queries, k), int64/float64.
         Used internally by HelixIndex._search_raw().
+
+        `candidates` is either a 1D array of positions shared by every query
+        (the pre-filter, see `search`) or a 2D (n_queries, n_cand) array of
+        per-query rows (Helix's text->vector cascade).
         """
 
     @abstractmethod
@@ -171,12 +202,16 @@ class CompositeIndex(Index):
         k: int = 10,
         parallel: bool = True,
         batch_size: int | None = None,
+        candidates: np.ndarray | None = None,
     ) -> list[SearchResult] | list[list[SearchResult]]:
         """Search every sub-index and fuse. `parallel` threads a batch of queries.
 
         A single query returns `list[SearchResult]`; a batch (e.g. a list of
         query texts, or a 2D array of query vectors) returns one such list
         per query, in order — the same batch contract as `TextIndex.search`.
+
+        `candidates`, if given, is a single flat array of positions applied
+        to every query, restricting every sub-index (see FilteredIndex).
         """
 
     @abstractmethod

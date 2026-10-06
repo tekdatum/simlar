@@ -22,12 +22,13 @@ authors = [
 # See docs/installation.md for instructions and the compatible version matrix.
 dependencies = [
     "numpy>=1.24,<2.5",
+    "PyStemmer>=2.0",
 ]
 
 [project.optional-dependencies]
-langchain   = ["langchain-core>=0.2"]
-haystack    = ["haystack-ai>=2.0"]
-llama_index = ["llama-index-core>=0.10"]
+langchain   = ["langchain-core>=1.0"]
+haystack    = ["haystack-ai>=3.0,<4"]
+llama_index = ["llama-index-core>=0.14"]
 dev = [
     "pytest>=8.0",
     "numpy>=1.24,<2.5",
@@ -77,6 +78,18 @@ testpaths  = ["tests"]
 pythonpath = ["src"]
 addopts    = "-ra -q"
 
+# ── Coverage ──────────────────────────────────────────────────────────────────
+
+# CI runs against the engine stub, where the tests for these modules are
+# skipped (they need SIMLAR_REAL_ENGINE=1). Leave them out so the coverage
+# total only measures code the stub run can exercise.
+[tool.coverage.run]
+omit = [
+    "*/simlar/integrations/haystack/_filters.py",
+    "*/simlar/integrations/haystack/simlar_document_store.py",
+    "*/simlar/integrations/llama_index/simlar_vector_store.py",
+]
+
 # ── Mypy ─────────────────────────────────────────────────────────────────────
 
 [tool.mypy]
@@ -108,4 +121,8 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["fsspec", "fsspec.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["bm25c", "bm25c.*"]
 ignore_missing_imports = true

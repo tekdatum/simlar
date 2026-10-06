@@ -55,6 +55,13 @@ class HelixIndex(CompositeIndex):
         vectors: np.ndarray | None = None,
         parallel: bool = True,
     ) -> None: ...
+    def update(
+        self,
+        ids: list[str],
+        texts: list[str] | None = None,
+        vectors: np.ndarray | None = None,
+    ) -> None: ...
+    def delete(self, ids: list[str]) -> None: ...
     def search(
         self,
         query_text: str | list[str] | None = None,
@@ -62,6 +69,7 @@ class HelixIndex(CompositeIndex):
         k: int | None = None,
         parallel: bool = True,
         batch_size: int | None = None,
+        candidates: np.ndarray | None = None,
     ) -> list[SearchResult]: ...
     def save(self, directory: str, base_dir: str | None = None) -> None: ...
     @classmethod

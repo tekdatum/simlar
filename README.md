@@ -1,6 +1,7 @@
 # sim_LAR
 
 Python search library combining keyword, semantic, and hybrid search into a single ranked result list — with first-class LangChain, LlamaIndex, and Haystack support.
+
 ---
 
 ## Installation
@@ -15,6 +16,50 @@ pip install simlar-engine
 `simlar-engine` is TekDatum's proprietary binary, licensed under a [Commercial EULA](./EULA.md) — installing it means accepting those terms. See [docs/installation.md](docs/installation.md) for the compatible version matrix between `simlar` and `simlar-engine`.
 
 ## Quick start
+
+### Hybrid search
+
+Combine keyword relevance and semantic similarity into one ranked list. The easiest way to get started is to give the index an embedder so Simlar can generate document and query embeddings for you.
+
+```python
+from sentence_transformers import SentenceTransformer
+from simlar import HelixIndex
+
+corpus = [
+    "cancer treatment with immunotherapy",
+    "machine learning transformers",
+    "climate change renewable energy",
+]
+ids = [f"doc_{i}" for i in range(len(corpus))]
+
+model = SentenceTransformer("WhereIsAI/UAE-Large-V1")
+
+index = HelixIndex(embedder=model.encode)
+index.add(ids=ids, texts=corpus)
+
+results = index.search("immunotherapy clinical trial", k=10)
+for r in results:
+    print(r.rank, r.id, f"{r.score:.4f}")
+```
+
+The embedder is used automatically when vectors are not supplied. You can also pass pre-computed vectors when you already have them.
+
+```python
+import numpy as np
+from simlar import HelixIndex
+
+vectors = np.load("corpus_embeddings.npy")  # shape (n, dim)
+
+index = HelixIndex(embedder=model.encode)
+index.add(ids=ids, texts=corpus, vectors=vectors)
+
+query_vec = np.load("query_embedding.npy")  # shape (1, dim)
+results = index.search(
+    query_text="immunotherapy clinical trial",
+    query_vector=query_vec,
+    k=10,
+)
+```
 
 ### Keyword search
 
@@ -72,36 +117,6 @@ idx.add(ids=ids, texts=corpus)
 results = idx.search("immunotherapy clinical trial", k=1)
 ```
 
-### Hybrid search
-
-Combine keyword relevance and semantic similarity into one ranked list.
-
-```python
-import numpy as np
-from simlar import HelixIndex, RelevanceIndex, SimlarEngine, ReciprocalRankFusion
-
-corpus  = ["cancer treatment with immunotherapy", "machine learning transformers", ...]
-ids     = [f"doc_{i}" for i in range(len(corpus))]
-vectors = np.load("corpus_embeddings.npy")  # shape (n, dim)
-
-index = HelixIndex(
-    text_index=RelevanceIndex(),
-    vector_index=SimlarEngine(),
-    fusion=ReciprocalRankFusion(),
-    top_k=20,
-)
-index.add(ids=ids, texts=corpus, vectors=vectors)
-
-query_vec = np.load("query_embedding.npy")
-results = index.search(
-    query_text="immunotherapy clinical trial",
-    query_vector=query_vec,
-    k=10,
-)
-for r in results:
-    print(r.rank, r.id, f"{r.score:.4f}")
-```
-
 ## Framework integrations
 
 sim_LAR works as a drop-in component in:
@@ -119,23 +134,6 @@ sim_LAR works as a drop-in component in:
 | `SimlarEngine` | Semantic search over pre-computed embedding vectors |
 | `HelixIndex` | Both signals combined; corpus fits in memory |
 | `StreamingHybridIndex` | Both signals; very large corpora added in batches |
-
-## Producing embeddings
-
-sim_LAR is model-agnostic — it accepts any `(n, dim)` float32 NumPy array. Use whichever embedding library fits your project. Example with [sentence-transformers](https://sbert.net/):
-
-```bash
-pip install sentence-transformers
-```
-
-```python
-from sentence_transformers import SentenceTransformer
-
-model = SentenceTransformer("WhereIsAI/UAE-Large-V1")
-
-corpus_vectors = model.encode(corpus, normalize_embeddings=True)   # (n, dim) float32
-query_vec      = model.encode(["my search query"], normalize_embeddings=True)  # (1, dim)
-```
 
 ## Saving and loading indexes
 

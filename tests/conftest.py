@@ -10,6 +10,7 @@ Covers every name imported from simlar_engine at module level across src/simlar/
 from __future__ import annotations
 
 import json
+import os
 import sys
 import types
 from dataclasses import dataclass
@@ -116,7 +117,7 @@ class _SimlarCore:
     def update_vector(self, doc_id: int, vector):
         pass
 
-    def search(self, query, k=10, parallel=False, batch_size=None):
+    def search(self, query, k=10, parallel=False, batch_size=None, candidates=None):
         n = min(k, len(self._ids))
         return [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
 
@@ -146,7 +147,7 @@ class _SimlarCore:
 
 
 class _RelevanceCore:
-    def __init__(self, method="robertson", k1=1.5, b=0.75, stopwords_lang=None, stemmer_lang=None):
+    def __init__(self, method="lucene", k1=1.5, b=0.75, stopwords_lang=None, stemmer_lang=None):
         self._ids: list[str] = []
         self._trained = False
 
@@ -163,13 +164,25 @@ class _RelevanceCore:
     def delete(self, ids):
         pass
 
-    def search(self, query, k=10, parallel=False, batch_size=None):
-        n = min(k, len(self._ids))
-        return [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
+    def search(self, query, k=10, parallel=False, batch_size=None, candidates=None):
+        positions = (
+            list(range(len(self._ids)))
+            if candidates is None
+            else [p for p in candidates if 0 <= p < len(self._ids)]
+        )
+        n = min(k, len(positions))
+        return [
+            _SearchResult(rank=i, id=self._ids[positions[i]], score=1.0 / (i + 1)) for i in range(n)
+        ]
 
-    def search_raw(self, query, k, parallel=False):
-        n = min(k, len(self._ids))
-        return np.arange(n, dtype=np.int64), np.ones(n, dtype=np.float32)
+    def search_raw(self, query, k, parallel=False, candidates=None):
+        positions = (
+            list(range(len(self._ids)))
+            if candidates is None
+            else [p for p in candidates if 0 <= p < len(self._ids)]
+        )
+        n = min(k, len(positions))
+        return np.array(positions[:n], dtype=np.int64), np.ones(n, dtype=np.float32)
 
     def save(self, directory, base_dir=None):
         Path(directory).mkdir(parents=True, exist_ok=True)
@@ -203,9 +216,12 @@ class _HelixCore:
         top_k=100,
         alpha_text=0.10,
         alpha_vector=1.0,
+        speed_preference="balanced",
     ):
         self._ids: list[str] = []
         self._trained = False
+        self.speed_preference = speed_preference
+        self.expected_recall = None
         self._text_index = text_index or _RelevanceCore()
         self._vector_index = vector_index or _SimlarCore()
         self._fusion = fusion or _ReciprocalRankFusion()
@@ -217,10 +233,32 @@ class _HelixCore:
         self._trained = True
 
     def add(self, ids, texts=None, vectors=None, parallel=False):
-        self._ids = list(ids)
+        # Forward to the injected sub-indexes (2-arg add(), matching the TextIndex/VectorIndex
+        # ABC contract) so tests can verify a custom text_index/vector_index actually receives
+        # what was added, not just that construction didn't crash.
+        if texts is not None:
+            self._text_index.add(ids, texts)
+        if vectors is not None:
+            self._vector_index.add(ids, vectors)
+        self._ids.extend(ids)
         self._trained = True
 
-    def search(self, query_text=None, query_vector=None, k=None, parallel=False, batch_size=None):
+    def update(self, ids, texts=None, vectors=None):
+        pass
+
+    def delete(self, ids):
+        doomed = set(ids)
+        self._ids = [i for i in self._ids if i not in doomed]
+
+    def search(
+        self,
+        query_text=None,
+        query_vector=None,
+        k=None,
+        parallel=False,
+        batch_size=None,
+        candidates=None,
+    ):
         effective_k = k or self._top_k
         n = min(effective_k, len(self._ids))
         return [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
@@ -280,13 +318,25 @@ class _HashMatchCore:
     def delete(self, ids):
         self._ids = [i for i in self._ids if i not in set(ids)]
 
-    def search(self, query, k=10, parallel=False, batch_size=None):
-        n = min(k, len(self._ids))
-        return [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
+    def search(self, query, k=10, parallel=False, batch_size=None, candidates=None):
+        positions = (
+            list(range(len(self._ids)))
+            if candidates is None
+            else [p for p in candidates if 0 <= p < len(self._ids)]
+        )
+        n = min(k, len(positions))
+        return [
+            _SearchResult(rank=i, id=self._ids[positions[i]], score=1.0 / (i + 1)) for i in range(n)
+        ]
 
-    def search_raw(self, queries, k, parallel=False):
-        n = min(k, len(self._ids))
-        return np.arange(n, dtype=np.int64), np.ones(n, dtype=np.float32)
+    def search_raw(self, queries, k, parallel=False, candidates=None):
+        positions = (
+            list(range(len(self._ids)))
+            if candidates is None
+            else [p for p in candidates if 0 <= p < len(self._ids)]
+        )
+        n = min(k, len(positions))
+        return np.array(positions[:n], dtype=np.int64), np.ones(n, dtype=np.float32)
 
     def save(self, directory, base_dir=None):
         Path(directory).mkdir(parents=True, exist_ok=True)
@@ -318,7 +368,15 @@ class _StreamingCore:
         self._count += len(corpus) if hasattr(corpus, "__len__") else 0
         self._trained = True
 
-    def search(self, query_text=None, query_vector=None, k=10, parallel=False, batch_size=None):
+    def search(
+        self,
+        query_text=None,
+        query_vector=None,
+        k=10,
+        parallel=False,
+        batch_size=None,
+        candidates=None,
+    ):
         n = min(k if k is not None else 10, self._count)
         return (
             np.arange(n, dtype=np.int64),
@@ -358,6 +416,162 @@ class _StreamingCore:
         return None
 
 
+# ── Stub filtering (mirrors private simlar_engine FilteredIndex / SQLFilter) ──
+# Just enough for the integrations to build and search *unfiltered* on top of
+# FilteredIndex: ids / metadata / roles are recorded, searches pass straight
+# through. Actually filtering needs the real engine -- see
+# tests/integrations/test_filtering_integrations.py (SIMLAR_REAL_ENGINE=1).
+
+
+class _FilterError(ValueError):
+    pass
+
+
+class _MetadataFilter:
+    pass
+
+
+class _SQLFilter:
+    def __init__(self):
+        self._ids: list[str] = []
+        self._meta: dict[str, dict] = {}
+        self._roles: dict[str, set] = {}
+
+    def add(self, ids, metadata=None):
+        dupes = [i for i in ids if i in self._meta]
+        if dupes:
+            raise ValueError(f"IDs already in filter: {dupes}")
+        for i, m in zip(ids, metadata or [{} for _ in ids], strict=False):
+            self._ids.append(i)
+            self._meta[i] = dict(m)
+
+    def update(self, ids, metadata):
+        for i, m in zip(ids, metadata, strict=False):
+            self._meta[i].update(m)
+
+    def delete(self, ids):
+        for i in ids:
+            self._meta.pop(i, None)
+            self._roles.pop(i, None)
+        self._ids = [i for i in self._ids if i in self._meta]
+
+    def compact(self):
+        pass
+
+    def grant(self, ids, roles):
+        for i in ids:
+            self._roles.setdefault(i, set()).update(roles)
+
+    def revoke(self, ids, roles):
+        for i in ids:
+            self._roles.get(i, set()).difference_update(roles)
+
+    def save(self, directory):
+        d = Path(directory)
+        d.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "ids": self._ids,
+            "meta": self._meta,
+            "roles": {k: sorted(v) for k, v in self._roles.items()},
+        }
+        (d / "filter.json").write_text(json.dumps(payload))
+
+    @classmethod
+    def load(cls, directory):
+        payload = json.loads((Path(directory) / "filter.json").read_text())
+        obj = cls()
+        obj._ids = payload["ids"]
+        obj._meta = payload["meta"]
+        obj._roles = {k: set(v) for k, v in payload["roles"].items()}
+        return obj
+
+    @property
+    def ids(self):
+        return list(self._ids)
+
+    @property
+    def size(self):
+        return len(self._ids)
+
+
+class _FilteredIndex:
+    _load_inner = None
+
+    def __init__(self, inner, sql_filter=None):
+        self._inner = inner
+        self._filter = sql_filter if sql_filter is not None else _SQLFilter()
+
+    def add(self, ids, *args, metadata=None, roles=None, **kwargs):
+        self._filter.add(ids, metadata)
+        self._inner.add(ids, *args, **kwargs)
+        for i, rs in zip(ids, roles or [], strict=False):
+            self._filter.grant([i], rs)
+
+    def _unfiltered(self, filter, roles, candidates):
+        if filter is not None or roles is not None or candidates is not None:
+            raise NotImplementedError("filtering needs the real simlar_engine")
+
+    def search(self, *args, filter=None, roles=None, candidates=None, **kwargs):
+        self._unfiltered(filter, roles, candidates)
+        return self._inner.search(*args, **kwargs)
+
+    def search_raw(self, *args, filter=None, roles=None, candidates=None, **kwargs):
+        self._unfiltered(filter, roles, candidates)
+        return self._inner.search_raw(*args, **kwargs)
+
+    def candidates(self, filter=None, roles=None):
+        self._unfiltered(filter, roles, None)
+        return None
+
+    def grant(self, ids, roles):
+        self._filter.grant(ids, roles)
+
+    def revoke(self, ids, roles):
+        self._filter.revoke(ids, roles)
+
+    def update(self, ids, *args, metadata=None, **kwargs):
+        if args or kwargs:
+            self._inner.update(ids, *args, **kwargs)
+        if metadata is not None:
+            self._filter.update(ids, metadata)
+
+    def delete(self, ids):
+        self._inner.delete(ids)
+        self._filter.delete(ids)
+        self._filter.compact()
+
+    def update_metadata(self, ids, metadata):
+        self._filter.update(ids, metadata)
+
+    def save(self, directory, base_dir=None):
+        d = _resolve_directory(directory, base_dir)
+        self._inner.save(str(d / "inner"))
+        self._filter.save(str(d / "filter"))
+
+    @classmethod
+    def load(cls, directory, base_dir=None):
+        from simlar.indexes.helix_index import HelixIndex
+
+        d = _resolve_directory(directory, base_dir)
+        return cls(HelixIndex.load(str(d / "inner")), _SQLFilter.load(str(d / "filter")))
+
+    @property
+    def inner(self):
+        return self._inner
+
+    @property
+    def sql_filter(self):
+        return self._filter
+
+    @property
+    def ids(self):
+        return self._filter.ids
+
+    @property
+    def size(self):
+        return self._filter.size
+
+
 # ── Inject stubs into sys.modules ─────────────────────────────────────────────
 
 
@@ -365,6 +579,13 @@ def _inject_engine_stubs() -> None:
     """Populate sys.modules with stub simlar_engine sub-modules."""
     if "simlar_engine" in sys.modules:
         return  # already installed (real engine or previously stubbed)
+    if os.environ.get("SIMLAR_REAL_ENGINE") == "1":
+        # Opt-in: run against the installed proprietary engine instead. Only
+        # the tests written for it (test_filtering_integrations.py) are
+        # expected to pass this way; the rest assume the stubs below.
+        import simlar_engine  # noqa: F401
+
+        return
 
     def _mod(name: str, **attrs) -> types.ModuleType:
         m = types.ModuleType(name)
@@ -381,6 +602,10 @@ def _inject_engine_stubs() -> None:
         write_config=_write_config,
         read_config=_read_config,
         ReciprocalRankFusion=_ReciprocalRankFusion,
+        FilterError=_FilterError,
+        MetadataFilter=_MetadataFilter,
+        SQLFilter=_SQLFilter,
+        FilteredIndex=_FilteredIndex,
     )
     _mod("simlar_engine._types", SearchResult=_SearchResult, _Parameters=_Parameters)
     _mod(
