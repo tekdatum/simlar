@@ -78,10 +78,10 @@ class TextIndex(Index):
         self,
         query: str | list[str],
         k: int,
-        parallel: bool = True, 
+        parallel: bool = True,
+        batch_size: int | None = None,
         candidates: np.ndarray | None = None,
-        batch_size: int | None = None
-    ) ->  list[SearchResult] | list[list[SearchResult]]:
+    ) -> list[SearchResult] | list[list[SearchResult]]:
         """Rank documents against query. `parallel` threads a batch of queries.
 
         `candidates`, if given, is a single flat array of positions applied
@@ -92,7 +92,6 @@ class TextIndex(Index):
         needs it (SQLFilter-style pre-filtering) always applies the same
         filter to every query in a batch.
         """
-        """Rank documents against query. `parallel` threads a batch of queries."""
 
     # ── Internal ───────────────────────────────────────────────────────────────
 
@@ -131,7 +130,7 @@ class VectorIndex(Index):
         self,
         query: np.ndarray,
         k: int,
-        parallel: bool = True, 
+        parallel: bool = True,
         batch_size: int | None = None,
         candidates: np.ndarray | None = None,
     ) -> list[SearchResult]:
@@ -207,10 +206,13 @@ class CompositeIndex(Index):
     ) -> list[SearchResult] | list[list[SearchResult]]:
         """Search every sub-index and fuse. `parallel` threads a batch of queries.
 
+        A single query returns `list[SearchResult]`; a batch (e.g. a list of
+        query texts, or a 2D array of query vectors) returns one such list
+        per query, in order — the same batch contract as `TextIndex.search`.
+
         `candidates`, if given, is a single flat array of positions applied
         to every query, restricting every sub-index (see FilteredIndex).
         """
-   
 
     @abstractmethod
     def fit(

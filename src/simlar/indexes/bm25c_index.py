@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from simlar_engine._persistence import resolve_directory
 
 try:
     import bm25c
@@ -77,15 +78,21 @@ class BM25CIndex(TextIndex):
 
     def search(
         self,
-        query: str,
+        query: str | list[str],
         k: int = 10,
         parallel: bool = False,
+        batch_size: int | None = None,
         candidates: np.ndarray | None = None,
-    ) -> list[SearchResult]:
-        return [
-            SearchResult(rank=r.rank, id=r.id, score=r.score, text=r.text)
-            for r in self._core.search(query, k, candidates=candidates)
-        ]
+    ) -> list[SearchResult] | list[list[SearchResult]]:
+        # bm25c's search() takes neither parallel nor batch_size -- both accepted
+        # here only for TextIndex interface conformance.
+        def convert(rs):
+            return [SearchResult(rank=r.rank, id=r.id, score=r.score, text=r.text) for r in rs]
+
+        results = self._core.search(query, k, candidates=candidates)
+        if isinstance(query, str):
+            return convert(results)
+        return [convert(rs) for rs in results]
 
     def search_raw(
         self,
@@ -101,14 +108,14 @@ class BM25CIndex(TextIndex):
         work than an unrestricted search, only the final ranking differs."""
         return self._core.search_raw(queries, k, parallel, candidates=candidates)
 
-    def save(self, directory: str) -> None:
-        self._core.save(directory)
+    def save(self, directory: str, base_dir: str | None = None) -> None:
+        self._core.save(str(resolve_directory(directory, base_dir)))
 
     @classmethod
-    def load(cls, directory: str) -> BM25CIndex:
+    def load(cls, directory: str, base_dir: str | None = None) -> BM25CIndex:
         _require_bm25c()
         obj = cls.__new__(cls)
-        obj._core = bm25c.BM25CRelevanceCore.load(directory)
+        obj._core = bm25c.BM25CRelevanceCore.load(str(resolve_directory(directory, base_dir)))
         return obj
 
     # ── Properties ────────────────────────────────────────────────────────────

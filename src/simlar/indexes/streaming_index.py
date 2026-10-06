@@ -74,9 +74,7 @@ class StreamingHelixIndex:
         batch_size: int | None = None,
         candidates: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
-        if candidates is None:            
-            return self._core.search(query_text, query_vector, k, parallel, batch_size)
-        return self._core.search(query_text, query_vector, k, parallel, batch_size, candidates=candidates)
+        return self._core.search(query_text, query_vector, k, parallel, batch_size, candidates)
 
     # ── Persistence ───────────────────────────────────────────────────────────
 

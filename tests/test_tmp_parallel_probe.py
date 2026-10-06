@@ -22,7 +22,8 @@ def spy():
 
         def make(orig=orig, label=label):
             def f(self, *a, **kw):
-                p = kw.get("parallel", a[-1] if a and isinstance(a[-1], bool) else "MISSING")
+                # parallel is the only bool positional; batch_size/candidates may follow it.
+                p = kw.get("parallel", next((x for x in a if isinstance(x, bool)), "MISSING"))
                 SEEN.append((label, p))
                 return orig(self, *a, **kw)
 

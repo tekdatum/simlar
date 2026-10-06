@@ -116,7 +116,7 @@ class _SimlarCore:
     def update_vector(self, doc_id: int, vector):
         pass
 
-    def search(self, query, k=10, parallel=False):
+    def search(self, query, k=10, parallel=False, batch_size=None, candidates=None):
         n = min(k, len(self._ids))
         return [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
 
@@ -163,9 +163,16 @@ class _RelevanceCore:
     def delete(self, ids):
         pass
 
-    def search(self, query, k=10, parallel=False, batch_size=None):
-        n = min(k, len(self._ids))
-        return [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
+    def search(self, query, k=10, parallel=False, batch_size=None, candidates=None):
+        positions = (
+            list(range(len(self._ids)))
+            if candidates is None
+            else [p for p in candidates if 0 <= p < len(self._ids)]
+        )
+        n = min(k, len(positions))
+        return [
+            _SearchResult(rank=i, id=self._ids[positions[i]], score=1.0 / (i + 1)) for i in range(n)
+        ]
 
     def search_raw(self, query, k, parallel=False, candidates=None):
         positions = (
@@ -232,7 +239,10 @@ class _HelixCore:
         self._ids = list(ids)
         self._trained = True
 
-    def search(self, query_text=None, query_vector=None, k=None, parallel=False, batch_size=None):
+    def search(
+        self, query_text=None, query_vector=None, k=None, parallel=False, batch_size=None,
+        candidates=None,
+    ):
         effective_k = k or self._top_k
         n = min(effective_k, len(self._ids))
         return [_SearchResult(rank=i, id=self._ids[i], score=1.0 / (i + 1)) for i in range(n)]
@@ -342,7 +352,10 @@ class _StreamingCore:
         self._count += len(corpus) if hasattr(corpus, "__len__") else 0
         self._trained = True
 
-    def search(self, query_text=None, query_vector=None, k=10, parallel=False, batch_size=None):
+    def search(
+        self, query_text=None, query_vector=None, k=10, parallel=False, batch_size=None,
+        candidates=None,
+    ):
         n = min(k if k is not None else 10, self._count)
         return (
             np.arange(n, dtype=np.int64),
@@ -369,6 +382,18 @@ class _StreamingCore:
     def is_trained(self):
         return self._trained
 
+    @property
+    def index_type(self):
+        return "streaming_hybrid"
+
+    @property
+    def boundaries(self):
+        return None
+
+    @property
+    def fit_values(self):
+        return None
+
 
 # ── Stub filtering (mirrors private simlar_engine FilteredIndex / SQLFilter) ──
 # Import-level placeholders only: simlar.FilteredIndex subclasses the engine's
@@ -384,6 +409,10 @@ class _SQLFilter:
     pass
 
 
+class _MetadataFilter:
+    pass
+
+
 class _FilteredIndex:
     _load_inner = None
 
@@ -394,18 +423,6 @@ class _FilteredIndex:
     @property
     def inner(self):
         return self._inner
-
-    @property
-    def index_type(self):
-        return "streaming_hybrid"
-
-    @property
-    def boundaries(self):
-        return None
-
-    @property
-    def fit_values(self):
-        return None
 
 
 # ── Inject stubs into sys.modules ─────────────────────────────────────────────
@@ -433,6 +450,7 @@ def _inject_engine_stubs() -> None:
         ReciprocalRankFusion=_ReciprocalRankFusion,
         FilterError=_FilterError,
         SQLFilter=_SQLFilter,
+        MetadataFilter=_MetadataFilter,
         FilteredIndex=_FilteredIndex,
     )
     _mod("simlar_engine._types", SearchResult=_SearchResult, _Parameters=_Parameters)

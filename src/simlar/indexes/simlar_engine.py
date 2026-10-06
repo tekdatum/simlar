@@ -69,8 +69,11 @@ class SimlarEngine(VectorIndex):
         params: _Parameters | None = None,
         **kwargs,
     ) -> None:
-
-        self._core.fit(embeddings, parallel, params)
+        self._rwlock.acquire_write()
+        try:
+            self._core.fit(embeddings, parallel, params)
+        finally:
+            self._rwlock.release_write()
 
     def add(self, ids: list[str], vectors: np.ndarray, parallel: bool = True) -> None:
         self._rwlock.acquire_write()
@@ -87,8 +90,11 @@ class SimlarEngine(VectorIndex):
             self._rwlock.release_write()
 
     def delete(self, ids: list[str]) -> None:
-
-        self._core.delete(ids)
+        self._rwlock.acquire_write()
+        try:
+            self._core.delete(ids)
+        finally:
+            self._rwlock.release_write()
 
     def search(
         self,
@@ -99,11 +105,8 @@ class SimlarEngine(VectorIndex):
         candidates: np.ndarray | None = None,
     ) -> list[SearchResult]:
         self._rwlock.acquire_read()
-           
         try:
-            if candidates is None:
-                        return self._core.search(query, k, parallel, batch_size)  
-            return self._core.search(query, k, parallel, parallel, batch_size, candidates)
+            return self._core.search(query, k, parallel, batch_size, candidates)
         finally:
             self._rwlock.release_read()
 
@@ -116,7 +119,7 @@ class SimlarEngine(VectorIndex):
         n_candidates: int | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         self._rwlock.acquire_read()
-        try:            
+        try:
             return self._core.search_raw(vectors, k, candidates, parallel, n_candidates)
         finally:
             self._rwlock.release_read()

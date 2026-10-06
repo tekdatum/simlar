@@ -27,11 +27,8 @@ class LookupIndex(TextIndex):
     # ── Public contract ───────────────────────────────────────────────────────
 
     def fit(self, corpus: list[str], parallel: bool = True, **kwargs: object) -> None:
-    def fit(self, corpus: list[str], parallel: bool = True, **kwargs: object) -> None:
         self._core.fit(corpus, parallel)
 
-    def add(self, ids: list[str], texts: list[str], parallel: bool = True) -> None:
-        self._core.add(ids, texts, parallel)
     def add(self, ids: list[str], texts: list[str], parallel: bool = True) -> None:
         self._core.add(ids, texts, parallel)
 

@@ -54,9 +54,7 @@ class HelixIndex(CompositeIndex):
         texts: list[str] | None = None,
         vectors: np.ndarray | None = None,
         parallel: bool = True,
-        parallel: bool = True,
     ) -> None:
-        self._core.add(ids, texts, vectors, parallel)
         self._core.add(ids, texts, vectors, parallel)
 
     # A list of texts or a 2D query_vector is a batch and returns one result
@@ -70,9 +68,7 @@ class HelixIndex(CompositeIndex):
         batch_size: int | None = None,
         candidates: np.ndarray | None = None,
     ) -> list[SearchResult] | list[list[SearchResult]]:
-        if candidates is None:
-            return self._core.search(query_text, query_vector, k, parallel, batch_size)
-        return self._core.search(query_text, query_vector, k, parallel, candidates=candidates)
+        return self._core.search(query_text, query_vector, k, parallel, batch_size, candidates)
 
     def fit(
         self,
