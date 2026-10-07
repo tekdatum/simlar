@@ -218,13 +218,12 @@ class StreamingHybridIndex:
         self,
         text_index_cls: type[TextIndex] | None = None,
         vector_index_cls: type[VectorIndex] | None = None,
-        text_k: int | None = None,
-        vector_k: int | None = None,
         top_k: int = 100,
         alpha_text: float = 0.10,
         alpha_vector: float = 1.0,
         rrf_k: int = 2,
         n_candidates: int | None = None,
+        speed_preference: str = "balanced",
     ) -> None: ...
 
     def add_batch(
@@ -257,6 +256,8 @@ class StreamingHybridIndex:
 ```
 
 `search()` returns `(ids, scores)` — both `np.ndarray` of shape `(k,)`. `ids` are integer positions into the original corpus; retrieve the document with `corpus[int(ids[i])]`. Unlike the other index types, `StreamingHybridIndex` has no `fit()`/`add()` — ingest exclusively through `add_batch()`. It exposes the same metadata properties as the other indexes (`.size`, `.is_trained`, `.index_type`, `.boundaries`, `.fit_values`), plus `.n_shards`.
+
+Search depths are always tuned: each shard's keyword and vector candidate pools (`text_k` / `vector_k`) come from the engine's tuned model, sized to that shard and `top_k`; they cannot be set by hand. `speed_preference` (`"fastest"`, `"fast"`, `"balanced"`, `"accurate"`, `"most accurate"`) picks the latency/recall trade-off and is saved with the index. `.expected_recall` is the lowest recall the model expects of any shard, or `None` when it can't vouch for a shard's size. Indexes saved with explicit `text_k` / `vector_k` still load; the values are ignored with a warning.
 
 ### Example
 

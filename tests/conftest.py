@@ -363,6 +363,7 @@ class _StreamingCore:
     def __init__(self, **kwargs):
         self._count: int = 0
         self._trained = False
+        self._speed_preference = kwargs.get("speed_preference", "balanced")
 
     def add_batch(self, corpus, vectors=None, parallel=False):
         self._count += len(corpus) if hasattr(corpus, "__len__") else 0
@@ -406,6 +407,14 @@ class _StreamingCore:
     @property
     def index_type(self):
         return "streaming_hybrid"
+
+    @property
+    def speed_preference(self):
+        return self._speed_preference
+
+    @property
+    def expected_recall(self):
+        return None
 
     @property
     def boundaries(self):

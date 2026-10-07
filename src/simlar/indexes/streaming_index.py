@@ -4,8 +4,10 @@ import numpy as np
 from simlar_engine.indexes._streaming_impl import _StreamingCore
 
 from simlar.contracts import TextIndex, VectorIndex
+from simlar.indexes.registry import register
 
 
+@register("streaming_hybrid")
 class StreamingHelixIndex:
     """
     Example:
@@ -22,24 +24,22 @@ class StreamingHelixIndex:
         self,
         text_index_cls: type[TextIndex] | None = None,
         vector_index_cls: type[VectorIndex] | None = None,
-        text_k: int | None = None,
-        vector_k: int | None = None,
         top_k: int = 100,
         alpha_text: float = 0.10,
         alpha_vector: float = 1.0,
         rrf_k: int = 2,
         n_candidates: int | None = None,
+        speed_preference: str = "balanced",
     ) -> None:
         self._core = _StreamingCore(
             text_index_cls=text_index_cls,
             vector_index_cls=vector_index_cls,
-            text_k=text_k,
-            vector_k=vector_k,
             top_k=top_k,
             alpha_text=alpha_text,
             alpha_vector=alpha_vector,
             rrf_k=rrf_k,
             n_candidates=n_candidates,
+            speed_preference=speed_preference,
         )
 
     # ── Ingest ────────────────────────────────────────────────────────────────
@@ -104,6 +104,16 @@ class StreamingHelixIndex:
     @property
     def index_type(self) -> str:
         return self._core.index_type
+
+    @property
+    def speed_preference(self) -> str:
+        return self._core.speed_preference
+
+    @property
+    def expected_recall(self) -> float | None:
+        """Lowest recall the tuned model expects of any shard's tuned depths;
+        None when empty or the model can't vouch for some shard's size."""
+        return self._core.expected_recall
 
     @property
     def boundaries(self) -> np.ndarray | None:

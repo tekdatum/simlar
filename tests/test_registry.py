@@ -46,6 +46,21 @@ class TestRegisterAndBuild:
         register("_test_in_registry")(_Dummy)
         assert "_test_in_registry" in _REGISTRY
 
+    def test_every_public_index_is_registered(self):
+        # load_from_directory() can only load what is registered under the
+        # index_type the index saves in its config.json.
+        import simlar
+
+        for name, cls in {
+            "relevance": simlar.RelevanceIndex,
+            "lookup": simlar.LookupIndex,
+            "simlar": simlar.SimlarEngine,
+            "helix": simlar.HelixIndex,
+            "streaming_hybrid": simlar.StreamingHybridIndex,
+            "filtered": simlar.FilteredIndex,
+        }.items():
+            assert _REGISTRY.get(name) is cls, name
+
 
 class TestLoadFromDirectory:
     def test_unknown_type_raises(self, tmp_path):

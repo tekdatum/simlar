@@ -3,7 +3,7 @@
 All notable changes to **simlar** (the open-source wrapper) are documented here.
 Dates are in YYYY-MM-DD format.
 
-## [Unreleased]
+## [1.2.0] — 2026-10-07
 
 ### Added
 - `HelixIndex(speed_preference=...)`: "fastest" … "most accurate" (default "balanced").
@@ -68,8 +68,18 @@ Dates are in YYYY-MM-DD format.
   (`list[SearchResult] | list[list[SearchResult]]`, the same batch contract
   `TextIndex.search()` already declares) — widened to match, and to accept
   `query_text` as `str | list[str]`.
+- `HelixIndex.save()` / `load()` keep a custom `ReciprocalRankFusion` (k, weights); a reloaded
+  index used to fall back to the default fusion and rank differently. Saving with any other
+  fusion strategy raises `TypeError`.
 
 ### Changed
+- `HelixIndex` without a `fusion` now weights its default RRF by `alpha_text` / `alpha_vector`
+  (default 0.1 : 1.0, previously ignored), matching `StreamingHybridIndex`'s defaults.
+  Default hybrid rankings change; pass `fusion=ReciprocalRankFusion()` for the old equal weights.
+- `StreamingHybridIndex` takes its search depths from the tuner only: `text_k` / `vector_k`
+  are removed from its constructor (passing them raises `TypeError`). New `speed_preference`
+  argument and `speed_preference` / `expected_recall` properties. Indexes saved with explicit
+  depths still load; the saved values are ignored with a warning.
 - Haystack `SimlarDocumentStore` writes go straight to the index. Overwrites update in place and
   deletes compact, with no tombstones and no second copy of every text. `save()` writes `index/`
   + `store.json`; directories saved by simlar 1.0 still load (their live documents are
