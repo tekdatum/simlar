@@ -19,8 +19,8 @@ from typing import Any
 from haystack import Document
 from haystack.errors import FilterError
 from haystack.utils.filters import COMPARISON_OPERATORS, LOGICAL_OPERATORS
-from simlar_engine import MetadataFilter
 
+from simlar.indexes.filtered_index import MetadataFilter
 from simlar.integrations._filtering import is_filterable_key, is_sql_scalar
 
 _ORDERING = frozenset({">", ">=", "<", "<="})

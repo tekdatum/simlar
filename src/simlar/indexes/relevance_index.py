@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import numpy as np
-from simlar_engine.indexes._relevance_impl import _RelevanceCore
 
+from simlar._engine import engine_core, require_core
 from simlar.contracts import SearchResult, TextIndex
 from simlar.indexes.registry import register
+
+_RelevanceCore = engine_core("relevance", "simlar_engine.indexes._relevance_impl", "_RelevanceCore")
 
 
 @register("relevance")
@@ -26,7 +28,9 @@ class RelevanceIndex(TextIndex):
         stopwords_lang: str = "english",
         stemmer_lang: str = "english",
     ) -> None:
-        self._core = _RelevanceCore(method, k1, b, stopwords_lang, stemmer_lang)
+        self._core = require_core("relevance", _RelevanceCore)(
+            method, k1, b, stopwords_lang, stemmer_lang
+        )
 
     # ── Public contract ───────────────────────────────────────────────────────
 
@@ -76,7 +80,7 @@ class RelevanceIndex(TextIndex):
     @classmethod
     def load(cls, directory: str, base_dir: str | None = None) -> RelevanceIndex:
         obj = cls.__new__(cls)
-        obj._core = _RelevanceCore.load(directory, base_dir)
+        obj._core = require_core("relevance", _RelevanceCore).load(directory, base_dir)
         return obj
 
     # ── Properties ────────────────────────────────────────────────────────────

@@ -28,9 +28,8 @@ import numpy as np
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
-from simlar_engine import MetadataFilter, SQLFilter
 
-from simlar.indexes.filtered_index import FilteredIndex
+from simlar.indexes.filtered_index import FilteredIndex, MetadataFilter, SQLFilter
 from simlar.indexes.helix_index import HelixIndex
 from simlar.integrations._filtering import filterable_metadata, replacement_patch
 

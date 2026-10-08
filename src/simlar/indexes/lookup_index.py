@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import numpy as np
-from simlar_engine.indexes._hash_match_impl import _HashMatchCore
 
+from simlar._engine import engine_core, require_core
 from simlar.contracts import SearchResult, TextIndex
 from simlar.indexes.registry import register
+
+_HashMatchCore = engine_core("lookup", "simlar_engine.indexes._hash_match_impl", "_HashMatchCore")
 
 
 @register("lookup")
@@ -22,7 +24,7 @@ class LookupIndex(TextIndex):
         self,
         stopwords_lang: str = "english",
     ) -> None:
-        self._core = _HashMatchCore(stopwords_lang)
+        self._core = require_core("lookup", _HashMatchCore)(stopwords_lang)
 
     # ── Public contract ───────────────────────────────────────────────────────
 
@@ -69,7 +71,7 @@ class LookupIndex(TextIndex):
     @classmethod
     def load(cls, directory: str, base_dir: str | None = None) -> LookupIndex:
         obj = cls.__new__(cls)
-        obj._core = _HashMatchCore.load(directory, base_dir)
+        obj._core = require_core("lookup", _HashMatchCore).load(directory, base_dir)
         return obj
 
     # ── Properties ────────────────────────────────────────────────────────────

@@ -3,11 +3,13 @@ from __future__ import annotations
 import threading
 
 import numpy as np
-from simlar_engine.indexes._simlar_impl import _SimlarCore
 
+from simlar._engine import engine_core, require_core
 from simlar.contracts import SearchResult, VectorIndex, _Parameters
 from simlar.embeddings import Embedder, _embed_documents, _embed_queries, as_embedder
 from simlar.indexes.registry import register
+
+_SimlarCore = engine_core("simlar", "simlar_engine.indexes._simlar_impl", "_SimlarCore")
 
 
 class _RWLock:
@@ -64,7 +66,7 @@ class SimlarEngine(VectorIndex):
     """
 
     def __init__(self, n_candidates: int | None = None, *, embedder=None) -> None:
-        self._core = _SimlarCore(n_candidates)
+        self._core = require_core("simlar", _SimlarCore)(n_candidates)
         self._rwlock = _RWLock()
         self._embedder = as_embedder(embedder)
 
@@ -160,7 +162,6 @@ class SimlarEngine(VectorIndex):
             self._rwlock.release_read()
 
     def save(self, directory: str, base_dir: str | None = None) -> None:
-
         self._rwlock.acquire_read()
         try:
             self._core.save(directory, base_dir)
@@ -170,7 +171,7 @@ class SimlarEngine(VectorIndex):
     @classmethod
     def load(cls, directory: str, base_dir: str | None = None, *, embedder=None) -> SimlarEngine:
         obj = cls.__new__(cls)
-        obj._core = _SimlarCore.load(directory, base_dir)
+        obj._core = require_core("simlar", _SimlarCore).load(directory, base_dir)
         obj._rwlock = _RWLock()
         obj._embedder = as_embedder(embedder)
         return obj

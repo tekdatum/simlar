@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import numpy as np
-from simlar_engine.indexes._streaming_impl import _StreamingCore
 
+from simlar._engine import engine_core, require_core
 from simlar.contracts import TextIndex, VectorIndex
 from simlar.indexes.registry import register
+
+_StreamingCore = engine_core("streaming", "simlar_engine.indexes._streaming_impl", "_StreamingCore")
 
 
 @register("streaming_hybrid")
@@ -31,7 +33,7 @@ class StreamingHelixIndex:
         n_candidates: int | None = None,
         speed_preference: str = "balanced",
     ) -> None:
-        self._core = _StreamingCore(
+        self._core = require_core("streaming", _StreamingCore)(
             text_index_cls=text_index_cls,
             vector_index_cls=vector_index_cls,
             top_k=top_k,
@@ -84,7 +86,7 @@ class StreamingHelixIndex:
     @classmethod
     def load(cls, directory: str, base_dir: str | None = None) -> StreamingHelixIndex:
         obj = cls.__new__(cls)
-        obj._core = _StreamingCore.load(directory, base_dir)
+        obj._core = require_core("streaming", _StreamingCore).load(directory, base_dir)
         return obj
 
     # ── Metadata ──────────────────────────────────────────────────────────────
