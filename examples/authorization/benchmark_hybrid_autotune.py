@@ -49,7 +49,9 @@ from hybrid_tuner_lite import HybridTunerLite  # noqa: E402
 NUM_QUESTIONS = 90447  # full train split
 NUM_ROLES = 10
 NUM_USERS = 100
-BATCH_SIZE = 128  # queries per search batch; each holds text_k ids + scores per query
+# Queries per search batch; each holds text_k ids + scores per query. Needed
+# because _retrieve_raw, unlike HelixIndex.search, never chunks on its own.
+BATCH_SIZE = 128
 
 # The model and the fusion it was measured with: relevance.npz holds for BM25
 # (robertson, k1=1.5, b=0.75) fused with RRF k=60 at weights [0.1, 0.5].
@@ -57,7 +59,7 @@ TUNER_MODEL = TUNER_DIR / "models" / "relevance.npz"
 SPEED_PREFERENCE = "fastest"
 TOP_K = 100  # results per search; the cutoff the tuner is asked about
 RRF_K = 60
-TEXT_WEIGHT = 0.5
+TEXT_WEIGHT = 0.1
 VECTOR_WEIGHT = 0.5
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
