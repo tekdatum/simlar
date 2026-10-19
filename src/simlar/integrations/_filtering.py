@@ -6,11 +6,7 @@ import re
 
 _SCALAR_TYPES = (str, int, float, bool, type(None))
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-# SQLFilter's own columns: a metadata key named like one would overwrite the
-# row's position (corrupting alignment with the index) or be shadowed by the id.
 _RESERVED_KEYS = frozenset({"id", "position"})
-# SQLite keywords (https://sqlite.org/lang_keywords.html): SQLFilter splices
-# column names unquoted into ALTER TABLE / UPDATE, so these fail to ingest.
 _SQL_KEYWORDS = frozenset(
     """abort action add after all alter always analyze and as asc attach autoincrement before
     begin between by cascade case cast check collate column commit conflict constraint create

@@ -20,13 +20,12 @@ class StreamingHybridIndex:
         self,
         text_index_cls: type[TextIndex] | None = None,
         vector_index_cls: type[VectorIndex] | None = None,
-        text_k: int | None = None,
-        vector_k: int | None = None,
         top_k: int = 100,
         alpha_text: float = 0.10,
         alpha_vector: float = 1.0,
         rrf_k: int = 2,
         n_candidates: int | None = None,
+        speed_preference: str = "balanced",
     ) -> None: ...
     def add_batch(self, corpus: list[str], vectors: np.ndarray, parallel: bool = True) -> None: ...
     async def add_batch_async(
@@ -52,6 +51,10 @@ class StreamingHybridIndex:
     def is_trained(self) -> bool: ...
     @property
     def index_type(self) -> str: ...
+    @property
+    def speed_preference(self) -> str: ...
+    @property
+    def expected_recall(self) -> float | None: ...
     @property
     def boundaries(self) -> np.ndarray | None: ...
     @property
