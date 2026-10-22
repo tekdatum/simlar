@@ -41,10 +41,11 @@ def build(name: str, **kwargs) -> Index:
     return _REGISTRY[name](**kwargs)
 
 
-def load_from_directory(directory: str, base_dir: str | None = None) -> Index:
+def load_from_directory(directory: str, base_dir: str | None = None, *, embedder=None) -> Index:
     """Load any registered index from its saved directory.
 
     Reads ``config.json`` → ``index_type`` field → calls the matching ``cls.load()``.
+    Embedders are not saved with the index; pass ``embedder`` to attach one.
     """
     d = resolve_directory(directory, base_dir)
     meta = json.loads((d / "config.json").read_text())
@@ -53,4 +54,9 @@ def load_from_directory(directory: str, base_dir: str | None = None) -> Index:
         raise KeyError(
             f"Saved index type {index_type!r} is not in registry. Available: {sorted(_REGISTRY)}"
         )
-    return _REGISTRY[index_type].load(directory, base_dir=base_dir)
+    idx = _REGISTRY[index_type].load(directory, base_dir=base_dir)
+    if embedder is not None:
+        if not hasattr(idx, "embedder"):
+            raise TypeError(f"{type(idx).__name__} does not take an embedder")
+        idx.embedder = embedder  # type: ignore[attr-defined]
+    return idx

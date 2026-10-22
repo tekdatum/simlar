@@ -6,6 +6,7 @@ import numpy as np
 from simlar_engine.indexes._simlar_impl import _SimlarCore
 
 from simlar.contracts import SearchResult, VectorIndex, _Parameters
+from simlar.embeddings import Embedder, _embed_documents, _embed_queries, as_embedder
 from simlar.indexes.registry import register
 
 
@@ -54,35 +55,61 @@ class SimlarEngine(VectorIndex):
         >>> idx.fit(embeddings)
         >>> query = np.random.rand(128).astype(np.float32)
         >>> results = idx.search(query, k=10)
+
+    With an ``embedder`` the index embeds texts itself::
+
+        >>> idx = SimlarEngine(embedder=model.encode)
+        >>> idx.add(["a", "b"], texts=["apple pie", "car engine"])
+        >>> idx.search(query_text="dessert", k=5)
     """
 
-    def __init__(self, n_candidates: int | None = None) -> None:
+    def __init__(self, n_candidates: int | None = None, *, embedder=None) -> None:
         self._core = _SimlarCore(n_candidates)
         self._rwlock = _RWLock()
+        self._embedder = as_embedder(embedder)
 
     # ── Public contract ───────────────────────────────────────────────────────
 
     def fit(
         self,
-        embeddings: np.ndarray,
+        embeddings: np.ndarray | None = None,
         parallel: bool = True,
         params: _Parameters | None = None,
+        *,
+        texts: list[str] | None = None,
         **kwargs,
     ) -> None:
+        # Embed outside the lock: a slow embedder must not stall readers.
+        embeddings = self._vectors(embeddings, texts)
         self._rwlock.acquire_write()
         try:
             self._core.fit(embeddings, parallel, params)
         finally:
             self._rwlock.release_write()
 
-    def add(self, ids: list[str], vectors: np.ndarray, parallel: bool = True) -> None:
+    def add(
+        self,
+        ids: list[str],
+        vectors: np.ndarray | None = None,
+        parallel: bool = True,
+        *,
+        texts: list[str] | None = None,
+    ) -> None:
+        vectors = self._vectors(vectors, texts)
         self._rwlock.acquire_write()
         try:
             self._core.add(ids, vectors, parallel)
         finally:
             self._rwlock.release_write()
 
-    def update(self, ids: list[str], vectors: np.ndarray) -> None:
+    def update(
+        self,
+        ids: list[str],
+        vectors: np.ndarray | None = None,
+        *,
+        texts: list[str] | None = None,
+    ) -> None:
+        vectors = self._vectors(vectors, texts)
         self._rwlock.acquire_write()
         try:
             self._core.update(ids, vectors)
@@ -98,14 +125,23 @@ class SimlarEngine(VectorIndex):
 
     def search(
         self,
-        query: np.ndarray,
+        query: np.ndarray | None = None,
         k: int = 10,
         parallel: bool = True,
         batch_size: int | None = None,
+        candidates: np.ndarray | None = None,
+        *,
+        query_text: str | list[str] | None = None,
     ) -> list[SearchResult]:
+        if query is not None and query_text is not None:
+            raise ValueError("Pass either query or query_text, not both")
+        if query is None:
+            if query_text is None:
+                raise ValueError("search() needs query or query_text")
+            query = _embed_queries(self.embedder, query_text)
         self._rwlock.acquire_read()
         try:
-            return self._core.search(query, k, parallel, batch_size)
+            return self._core.search(query, k, parallel, batch_size, candidates)
         finally:
             self._rwlock.release_read()
 
@@ -124,9 +160,7 @@ class SimlarEngine(VectorIndex):
             self._rwlock.release_read()
 
     def save(self, directory: str, base_dir: str | None = None) -> None:
-        # save() only reads _ids/_coreindex/matrix, but a torn read across
-        # them is the same hazard as search() (and is exactly how Issue 3's
-        # corrupted-load crash gets produced) — so it takes the read lock too.
+
         self._rwlock.acquire_read()
         try:
             self._core.save(directory, base_dir)
@@ -134,13 +168,31 @@ class SimlarEngine(VectorIndex):
             self._rwlock.release_read()
 
     @classmethod
-    def load(cls, directory: str, base_dir: str | None = None) -> SimlarEngine:
+    def load(cls, directory: str, base_dir: str | None = None, *, embedder=None) -> SimlarEngine:
         obj = cls.__new__(cls)
         obj._core = _SimlarCore.load(directory, base_dir)
         obj._rwlock = _RWLock()
+        obj._embedder = as_embedder(embedder)
         return obj
 
+    def _vectors(self, vectors: np.ndarray | None, texts: list[str] | None) -> np.ndarray:
+        if vectors is not None and texts is not None:
+            raise ValueError("Pass either vectors or texts, not both")
+        if vectors is not None:
+            return vectors
+        if texts is None:
+            raise ValueError("vectors or texts is required")
+        return _embed_documents(self.embedder, texts)
+
     # ── Properties ────────────────────────────────────────────────────────────
+
+    @property
+    def embedder(self) -> Embedder | None:
+        return getattr(self, "_embedder", None)
+
+    @embedder.setter
+    def embedder(self, value) -> None:
+        self._embedder = as_embedder(value)
 
     @property
     def size(self) -> int:

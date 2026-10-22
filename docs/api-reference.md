@@ -7,6 +7,7 @@ from simlar import (
     SearchResult,
     RelevanceIndex, SimlarEngine, HelixIndex, StreamingHybridIndex, LookupIndex,
     ReciprocalRankFusion,
+    Embedder, CallableEmbedder,
     register, load_from_directory,
 )
 ```
@@ -38,7 +39,7 @@ Keyword search over text documents, ranked by BM25 relevance (term rarity and do
 class RelevanceIndex:
     def __init__(
         self,
-        method: str = "robertson",
+        method: str = "lucene",
         k1: float = 1.5,
         b: float = 0.75,
         stopwords_lang: str = "english",
@@ -77,19 +78,20 @@ Semantic search over vector embeddings.
 
 ```python
 class SimlarEngine:
-    def __init__(self, n_candidates: int | None = None) -> None: ...
+    def __init__(self, n_candidates: int | None = None, *, embedder=None) -> None: ...
 
-    def add(self, ids: list[str], vectors: np.ndarray, parallel: bool = True) -> None: ...
-    def update(self, ids: list[str], vectors: np.ndarray) -> None: ...
+    def add(self, ids: list[str], vectors: np.ndarray | None = None, parallel: bool = True, *, texts: list[str] | None = None) -> None: ...
+    def update(self, ids: list[str], vectors: np.ndarray | None = None, *, texts: list[str] | None = None) -> None: ...
     def delete(self, ids: list[str]) -> None: ...
-    def search(self, query: np.ndarray, k: int = 10, parallel: bool = True, batch_size: int | None = None) -> list[SearchResult]: ...
+    def search(self, query: np.ndarray | None = None, k: int = 10, parallel: bool = True, batch_size: int | None = None, candidates: np.ndarray | None = None, *, query_text: str | list[str] | None = None) -> list[SearchResult]: ...
     def save(self, path: str) -> None: ...
 
     @classmethod
-    def load(cls, path: str) -> SimlarEngine: ...
+    def load(cls, path: str, *, embedder=None) -> SimlarEngine: ...
 ```
 
 `n_candidates` sizes the internal shortlist; leave it `None` to size it automatically from your corpus. Supports incremental `add()`, `update()`, and `delete()` after the initial fit. `batch_size` bounds the peak memory of a large query batch by chunking the query axis, same as `RelevanceIndex.search()`.
+With an [`embedder`](#embedder), pass `texts=` / `query_text=` instead of vectors.
 
 ### Example
 
@@ -124,6 +126,7 @@ class HelixIndex:
         top_k: int = 100,
         alpha_text: float = 0.10,
         alpha_vector: float = 1.0,
+        embedder=None,
     ) -> None: ...
 
     def add(
@@ -146,10 +149,11 @@ class HelixIndex:
     def save(self, directory: str) -> None: ...
 
     @classmethod
-    def load(cls, directory: str) -> HelixIndex: ...
+    def load(cls, directory: str, *, embedder=None) -> HelixIndex: ...
 ```
 
 - Pass only `query_text` to search by keywords, only `query_vector` for semantics, or both for full hybrid search.
+- With an [`embedder`](#embedder), texts added without `vectors` are embedded for the vector side, and a `query_text` without `query_vector` is embedded too, so text-only calls search both signals. Without one, text-only searches stay keyword-only.
 - `alpha_text` and `alpha_vector` control how much each signal influences the final ranking.
 
 ### Example
@@ -214,13 +218,12 @@ class StreamingHybridIndex:
         self,
         text_index_cls: type[TextIndex] | None = None,
         vector_index_cls: type[VectorIndex] | None = None,
-        text_k: int | None = None,
-        vector_k: int | None = None,
         top_k: int = 100,
         alpha_text: float = 0.10,
         alpha_vector: float = 1.0,
         rrf_k: int = 2,
         n_candidates: int | None = None,
+        speed_preference: str = "balanced",
     ) -> None: ...
 
     def add_batch(
@@ -253,6 +256,8 @@ class StreamingHybridIndex:
 ```
 
 `search()` returns `(ids, scores)` — both `np.ndarray` of shape `(k,)`. `ids` are integer positions into the original corpus; retrieve the document with `corpus[int(ids[i])]`. Unlike the other index types, `StreamingHybridIndex` has no `fit()`/`add()` — ingest exclusively through `add_batch()`. It exposes the same metadata properties as the other indexes (`.size`, `.is_trained`, `.index_type`, `.boundaries`, `.fit_values`), plus `.n_shards`.
+
+Search depths are always tuned: each shard's keyword and vector candidate pools (`text_k` / `vector_k`) come from the engine's tuned model, sized to that shard and `top_k`; they cannot be set by hand. `speed_preference` (`"fastest"`, `"fast"`, `"balanced"`, `"accurate"`, `"most accurate"`) picks the latency/recall trade-off and is saved with the index. `.expected_recall` is the lowest recall the model expects of any shard, or `None` when it can't vouch for a shard's size. Indexes saved with explicit `text_k` / `vector_k` still load; the values are ignored with a warning.
 
 ### Example
 
@@ -292,6 +297,50 @@ fusion = ReciprocalRankFusion(weights=[1.0, 3.0])
 
 ---
 
+## Embedder
+
+Lets an index embed text itself. Any object with these two methods qualifies — a LangChain `Embeddings` included:
+
+```python
+class Embedder(Protocol):
+    def embed_documents(self, texts: list[str]) -> np.ndarray | list[list[float]]: ...
+    def embed_query(self, text: str) -> np.ndarray | list[float]: ...
+```
+
+`SimlarEngine`, `HelixIndex` and `FilteredIndex` (through its inner index) accept `embedder=`. A bare callable `fn(list[str]) -> (n, dim)` is wrapped in `CallableEmbedder` automatically.
+
+```python
+class CallableEmbedder:
+    def __init__(
+        self,
+        fn: Callable[[list[str]], ArrayLike],
+        query_fn: Callable[[str], ArrayLike] | None = None,  # default: fn([text])[0]
+        *,
+        normalize: bool = False,       # L2-normalize every vector
+        batch_size: int | None = None, # call fn on chunks of this size
+    ) -> None: ...
+```
+
+Embedders are not saved with an index. Pass one again when loading — `HelixIndex.load(path, embedder=e)`, `FilteredIndex.load(path, embedder=e)`, `load_from_directory(path, embedder=e)` — or set `index.embedder = e`.
+
+### Example
+
+```python
+from sentence_transformers import SentenceTransformer
+from simlar import CallableEmbedder, FilteredIndex, HelixIndex
+
+model = SentenceTransformer("all-MiniLM-L6-v2")
+index = FilteredIndex(HelixIndex(embedder=CallableEmbedder(model.encode, normalize=True)))
+index.add(["a", "b"], ["apple pie", "car engine"], metadata=[{"kind": "food"}, {"kind": "car"}])
+
+results = index.search(query_text="dessert", k=5, filter="kind = 'food'")
+```
+
+Embedders from other frameworks wrap the same way, e.g. LlamaIndex:
+`CallableEmbedder(embed_model.get_text_embedding_batch, embed_model.get_query_embedding)`.
+
+---
+
 ## Extending simlar
 
 ### register
@@ -314,4 +363,5 @@ Loads any saved index without knowing which type it is.
 from simlar import load_from_directory
 
 index = load_from_directory("/path/to/saved/index")
+index = load_from_directory("/path/to/saved/index", embedder=model.encode)  # reattach an embedder
 ```

@@ -20,7 +20,16 @@ class TestAddAndSearch:
         assert index.is_trained is True
 
     def test_search_returns_results(self):
-        index = _make_index()
+        # Two documents genuinely match, ranked by BM25 (the shorter one first),
+        # so the expected order doesn't rest on a tie between zero-score
+        # non-matches -- whose order shifts with how many text candidates the
+        # tuned sub-k asks for. The corpus is five documents because BM25 gives
+        # a term found in half the corpus or more no weight at all.
+        index = HelixIndex(top_k=10)
+        index.add(
+            ids=["a", "b", "c", "d", "e"],
+            texts=["alpha", "alpha beta", "gamma", "delta", "epsilon"],
+        )
         results = index.search(query_text="alpha", k=2)
         assert [r.id for r in results] == ["a", "b"]
 

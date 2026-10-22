@@ -44,6 +44,7 @@ class LookupIndex(TextIndex):
         k: int = 10,
         parallel: bool = True,
         batch_size: int | None = None,
+        candidates: np.ndarray | None = None,
     ) -> list[SearchResult] | list[list[SearchResult]]:
         """Rank documents against `query`, or against a batch of queries.
 
@@ -51,15 +52,16 @@ class LookupIndex(TextIndex):
         one such list per query, in order. A batch runs as one threaded call
         rather than one call per query, which is what `parallel` acts on.
         """
-        return self._core.search(query, k, parallel, batch_size)
+        return self._core.search(query, k, parallel, batch_size, candidates)
 
     def search_raw(
         self,
         queries: str | list[str],
         k: int,
         parallel: bool = True,
+        candidates: np.ndarray | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
-        return self._core.search_raw(queries, k, parallel)
+        return self._core.search_raw(queries, k, parallel, candidates)
 
     def save(self, directory: str, base_dir: str | None = None) -> None:
         self._core.save(directory, base_dir)
