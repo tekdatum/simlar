@@ -10,8 +10,8 @@ hand results back as ``Document`` objects.
 Example::
 
     store = SimlarVectorStore.from_texts(texts, embedding, metadatas=metas)
-    store.similarity_search("query", k=5, filter="year >= 2020 AND 'ml' IN tags")
-    retriever = store.as_retriever(search_kwargs={"k": 5, "filter": {"lang": "en"}})
+    store.similarity_search("query", k=5, filter={"year": {">=": 2020}, "tags": {"any": ["ml"]}})
+    retriever = store.as_retriever(search_kwargs={"k": 5, "filter": {"lang": {"=": "en"}}})
 """
 
 from __future__ import annotations
@@ -42,21 +42,22 @@ _DOCS_FILENAME = "docs.json"
 _LEGACY_INDEX_DIRNAME = "simlar"
 _LEGACY_SIDECAR_FILENAME = "sidecar.pkl"
 
-Filter: TypeAlias = "str | dict | MetadataFilter"
+Filter: TypeAlias = "dict | MetadataFilter"
 
 
 class SimlarVectorStore(VectorStore):
     """Hybrid search with metadata filtering over a simlar ``FilteredIndex``.
 
-    ``filter`` on every search method is a SQL WHERE fragment
-    (``"len >= 6 AND lang IN ('en', 'es')"``, ``"'ml' IN tags"``), a
-    LangChain-style dict (``{"len": {"$gte": 6}}``) or a ``MetadataFilter``
-    chain. ``roles=[...]`` restricts results to documents granted to any of
-    those roles; ``None`` (default) skips the access check.
+    ``filter`` on every search method maps metadata fields to operators,
+    all AND'ed: ``{"len": {">=": 6, "<": 20}, "lang": {"in": ["en", "es"]},
+    "tags": {"any": ["ml"]}}`` (``= != > >= < <=``, ``in`` / ``not in``,
+    ``like``, ``null``, and ``any`` for list values); a ``MetadataFilter``
+    chain also works. ``roles=[...]`` restricts results to documents granted
+    to any of those roles; ``None`` (default) skips the access check.
 
     Metadata keys that are identifiers with scalar (or list-of-scalar) values
-    are filterable; list values are multi-valued (``"'ml' IN tags"``). Other
-    metadata is returned on the Document but can't be filtered on.
+    are filterable; list values are multi-valued (``{"tags": {"any": ["ml"]}}``).
+    Other metadata is returned on the Document but can't be filtered on.
     """
 
     def __init__(

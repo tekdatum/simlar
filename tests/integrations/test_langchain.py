@@ -216,13 +216,13 @@ class TestBasics:
 
 @real_engine
 class TestFiltering:
-    def test_sql_filter(self):
-        docs = _store().similarity_search("baking car", k=6, filter="year >= 2021")
+    def test_operator_dict_filter(self):
+        docs = _store().similarity_search("baking car", k=6, filter={"year": {">=": 2021}})
         assert docs and set(_ids(docs)) <= {"d1", "d3", "d4"}
 
-    def test_dict_filter(self):
+    def test_several_fields_are_anded(self):
         docs = _store().similarity_search(
-            "car", k=6, filter={"topic": "cars", "year": {"$lt": 2023}}
+            "car", k=6, filter={"topic": {"=": "cars"}, "year": {"<": 2023}}
         )
         assert _ids(docs) == ["d2"]
 
@@ -235,17 +235,17 @@ class TestFiltering:
         assert set(_ids(docs)) == {"d4", "d5"}
 
     def test_multi_valued_filter(self):
-        docs = _store().similarity_search("baking", k=6, filter="'baking' IN tags")
+        docs = _store().similarity_search("baking", k=6, filter={"tags": {"any": ["baking"]}})
         assert set(_ids(docs)) == {"d0", "d1"}
 
     def test_filter_matching_nothing(self):
-        assert _store().similarity_search("baking", k=3, filter="year > 3000") == []
+        assert _store().similarity_search("baking", k=3, filter={"year": {">": 3000}}) == []
 
     def test_unknown_column_raises(self):
         from simlar import FilterError
 
         with pytest.raises(FilterError):
-            _store().similarity_search("baking", filter="nope = 1")
+            _store().similarity_search("baking", filter={"nope": {"=": 1}})
 
     def test_unfilterable_metadata_kept_but_not_queryable(self, empty):
         from simlar import FilterError
@@ -258,9 +258,9 @@ class TestFiltering:
             "file-name": "x.txt",
             "ok": 1,
         }
-        assert _ids(empty.similarity_search("nested", filter="ok = 1")) == ["n"]
+        assert _ids(empty.similarity_search("nested", filter={"ok": {"=": 1}})) == ["n"]
         with pytest.raises(FilterError):
-            empty.similarity_search("nested", filter="info = 1")
+            empty.similarity_search("nested", filter={"info": {"=": 1}})
 
     def test_unsafe_metadata_keys_are_not_indexed(self, empty):
         # "position" used to overwrite the SQL row's position, SQL keywords
@@ -272,7 +272,7 @@ class TestFiltering:
         ]
         empty.add_texts(["first doc", "second doc", "third doc"], metas, ids=["a", "b", "c"])
         assert empty.index.sql_filter.ids == ["a", "b", "c"]
-        assert set(_ids(empty.similarity_search("doc", k=3, filter="ok >= 2"))) == {"b", "c"}
+        assert set(_ids(empty.similarity_search("doc", k=3, filter={"ok": {">=": 2}}))) == {"b", "c"}
         assert empty.get_by_ids(["a"])[0].metadata == metas[0]
 
     def test_roles(self):
@@ -290,7 +290,7 @@ class TestFiltering:
 
     def test_filter_and_roles_combined(self):
         docs = _store().similarity_search(
-            "training trees", k=6, filter={"topic": "ml"}, roles=["public"]
+            "training trees", k=6, filter={"topic": {"=": "ml"}}, roles=["public"]
         )
         assert _ids(docs) == ["d4"]
 
@@ -298,7 +298,7 @@ class TestFiltering:
         store = _store()
         q = _HashEmbeddings().embed_query("electric car battery")
         assert _ids(store.similarity_search_by_vector(q, k=1)) == ["d3"]
-        assert _ids(store.similarity_search_by_vector(q, k=1, filter="topic = 'ml'"))[0] in {
+        assert _ids(store.similarity_search_by_vector(q, k=1, filter={"topic": {"=": "ml"}}))[0] in {
             "d4",
             "d5",
         }
@@ -309,11 +309,11 @@ class TestFiltering:
     def test_upsert_replaces_metadata(self):
         store = _store()
         store.add_texts(["apple pie recipe baking"], [{"topic": "archive"}], ids=["d0"])
-        assert "d0" not in _ids(store.similarity_search("baking", k=6, filter="topic = 'food'"))
-        assert "d0" in _ids(store.similarity_search("baking", k=6, filter="topic = 'archive'"))
+        assert "d0" not in _ids(store.similarity_search("baking", k=6, filter={"topic": {"=": "food"}}))
+        assert "d0" in _ids(store.similarity_search("baking", k=6, filter={"topic": {"=": "archive"}}))
         # Keys the new metadata dropped are cleared, not left behind.
-        assert "d0" not in _ids(store.similarity_search("baking", k=6, filter="year = 2019"))
-        assert "d0" not in _ids(store.similarity_search("baking", k=6, filter="'dessert' IN tags"))
+        assert "d0" not in _ids(store.similarity_search("baking", k=6, filter={"year": {"=": 2019}}))
+        assert "d0" not in _ids(store.similarity_search("baking", k=6, filter={"tags": {"any": ["dessert"]}}))
 
     def test_upsert_replaces_text(self):
         store = _store()
@@ -322,19 +322,19 @@ class TestFiltering:
 
     def test_delete_keeps_filter_aligned(self):
         store = _store()
-        store.similarity_search("car", filter="topic = 'cars'")  # populate the filter cache
+        store.similarity_search("car", filter={"topic": {"=": "cars"}})  # populate the filter cache
         store.delete(["d0", "d2"])
-        assert _ids(store.similarity_search("car", k=6, filter="topic = 'cars'")) == ["d3"]
+        assert _ids(store.similarity_search("car", k=6, filter={"topic": {"=": "cars"}})) == ["d3"]
         assert set(_ids(store.similarity_search("baking", k=6, roles=["public"]))) == {"d1", "d4"}
         store.add_texts(["new car review"], [{"topic": "cars"}], ids=["n"])
-        assert set(_ids(store.similarity_search("car", k=6, filter="topic = 'cars'"))) == {
+        assert set(_ids(store.similarity_search("car", k=6, filter={"topic": {"=": "cars"}}))) == {
             "d3",
             "n",
         }
 
     def test_as_retriever_passes_filter_and_roles(self):
         retriever = _store().as_retriever(
-            search_kwargs={"k": 6, "filter": "topic = 'ml'", "roles": ["public"]}
+            search_kwargs={"k": 6, "filter": {"topic": {"=": "ml"}}, "roles": ["public"]}
         )
         assert _ids(retriever.invoke("training")) == ["d4"]
 
@@ -349,7 +349,7 @@ class TestFiltering:
 
         async def run():
             return await asyncio.gather(
-                *(store.asimilarity_search("car", k=6, filter="topic = 'cars'") for _ in range(8))
+                *(store.asimilarity_search("car", k=6, filter={"topic": {"=": "cars"}}) for _ in range(8))
             )
 
         for docs in asyncio.run(run()):
@@ -357,7 +357,7 @@ class TestFiltering:
 
     def test_save_load_keeps_filter_and_roles(self, tmp_path):
         store = _store()
-        q = dict(k=6, filter="year >= 2020", roles=["staff"])
+        q = dict(k=6, filter={"year": {">=": 2020}}, roles=["staff"])
         expected = _ids(store.similarity_search("car training", **q))
         store.save_local(str(tmp_path))
         loaded = SimlarVectorStore.load_local(str(tmp_path), embedding=_HashEmbeddings())
@@ -388,7 +388,7 @@ class TestFiltering:
         store = SimlarVectorStore.load_local(
             str(tmp_path), embedding=_HashEmbeddings(), allow_dangerous_deserialization=True
         )
-        assert _ids(store.similarity_search("car", k=6, filter="topic = 'cars'")) in (
+        assert _ids(store.similarity_search("car", k=6, filter={"topic": {"=": "cars"}})) in (
             ["d2", "d3"],
             ["d3", "d2"],
         )

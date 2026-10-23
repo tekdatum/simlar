@@ -5,7 +5,7 @@ from typing import Any
 import numpy as np
 from simlar_engine import MetadataFilter, SQLFilter
 
-_Filter = str | dict[str, Any] | MetadataFilter
+_Filter = dict[str, dict[str, Any]] | MetadataFilter
 
 class FilteredIndex:
     """
@@ -21,7 +21,9 @@ class FilteredIndex:
             metadata=[{"len": 9, "tags": ["food"]}, {"len": 10, "tags": ["cars"]}],
             roles=[["public"], ["staff"]],
         )
-        results = idx.search(query_vector=q_vec, k=5, filter="len >= 6 AND 'food' IN tags")
+        results = idx.search(
+            query_vector=q_vec, k=5, filter={"len": {">=": 6}, "tags": {"any": ["food"]}}
+        )
         results = idx.search(query_text="engine", query_vector=q_vec, k=5, roles=["staff"])
         idx.save("filtered.idx")
         idx = FilteredIndex.load("filtered.idx")

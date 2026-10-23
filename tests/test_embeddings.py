@@ -334,7 +334,7 @@ class TestRealEngine:
         idx = FilteredIndex(HelixIndex(embedder=_hash_embed))
         idx.add(IDS, TEXTS, metadata=[{"kind": "food" if i % 2 == 0 else "fix"} for i in range(4)])
         assert idx.search(query_text="chocolate cake", k=1)[0].id == "c"
-        hits = idx.search(query_text="repair", k=4, filter="kind = 'fix'")
+        hits = idx.search(query_text="repair", k=4, filter={"kind": {"=": "fix"}})
         assert {r.id for r in hits} == {"b", "d"}
 
         idx.save(str(tmp_path))

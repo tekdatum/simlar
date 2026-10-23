@@ -333,8 +333,16 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 index = FilteredIndex(HelixIndex(embedder=CallableEmbedder(model.encode, normalize=True)))
 index.add(["a", "b"], ["apple pie", "car engine"], metadata=[{"kind": "food"}, {"kind": "car"}])
 
-results = index.search(query_text="dessert", k=5, filter="kind = 'food'")
+results = index.search(query_text="dessert", k=5, filter={"kind": {"=": "food"}})
 ```
+
+`filter=` maps each metadata field to its operators, all AND'ed:
+`{"len": {">=": 6, "<": 20}, "kind": {"in": ["food", "drink"]}, "tags": {"any": ["vegan"]}}`.
+Operators are `=` `!=` `>` `>=` `<` `<=`, `in` / `not in` (a list), `like` (a SQL `LIKE`
+pattern), `null` (`True` / `False`), and `any` (a list) for list-valued fields. They run as
+plain SQL, so `!=` and `not in` skip documents where the field is missing. For `OR` / `NOT`,
+pass a `MetadataFilter` built from `index.sql_filter.where(...)` / `.where_any(...)` and
+combined with `&`, `|`, `~`.
 
 Embedders from other frameworks wrap the same way, e.g. LlamaIndex:
 `CallableEmbedder(embed_model.get_text_embedding_batch, embed_model.get_query_embedding)`.

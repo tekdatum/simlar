@@ -25,6 +25,8 @@ from llama_index.core.vector_stores.types import (
     VectorStoreQueryMode,
 )
 
+from simlar_engine import MetadataFilter as EngineFilter
+
 from simlar.indexes.helix_index import HelixIndex
 from simlar.integrations.llama_index.simlar_vector_store import SimlarVectorStore, to_engine_filter
 
@@ -113,57 +115,51 @@ def _fs(*filters, condition="and"):
 _KNOWN = {"topic", "year", "tags", "author"}
 
 
+def _sql(chain):
+    return chain.to_sql()
+
+
+_C = EngineFilter
+
+
+@real_engine  # the stub engine's MetadataFilter is an empty placeholder
 class TestToEngineFilter:
     @pytest.mark.parametrize(
         ("op", "value", "expected"),
         [
-            ("==", "food", {"topic": {"$eq": "food"}}),
-            ("!=", "food", {"topic": {"$ne": "food"}}),
-            (">", 1, {"topic": {"$gt": 1}}),
-            (">=", 1, {"topic": {"$gte": 1}}),
-            ("<", 1, {"topic": {"$lt": 1}}),
-            ("<=", 1, {"topic": {"$lte": 1}}),
-            ("in", ["a", "b"], {"topic": {"$in": ["a", "b"]}}),
-            ("nin", ["a"], {"topic": {"$nin": ["a"]}}),
-            ("contains", "a", {"topic": {"$contains": "a"}}),
-            ("any", ["a", "b"], {"topic": {"$in": ["a", "b"]}}),
-            (
-                "all",
-                ["a", "b"],
-                {"$and": [{"topic": {"$contains": "a"}}, {"topic": {"$contains": "b"}}]},
-            ),
-            ("text_match", "ab", {"topic": {"$like": "%ab%"}}),
-            ("text_match_insensitive", "ab", {"topic": {"$like": "%ab%"}}),
-            ("is_empty", None, {"topic": {"$exists": False}}),
+            ("==", "food", lambda: _C().where("topic", "=", "food")),
+            ("!=", "food", lambda: _C().where("topic", "!=", "food")),
+            (">", 1, lambda: _C().where("topic", ">", 1)),
+            (">=", 1, lambda: _C().where("topic", ">=", 1)),
+            ("<", 1, lambda: _C().where("topic", "<", 1)),
+            ("<=", 1, lambda: _C().where("topic", "<=", 1)),
+            ("in", ["a", "b"], lambda: _C().where("topic", "IN", ["a", "b"])),
+            ("nin", ["a"], lambda: ~_C().where("topic", "IN", ["a"])),
+            ("contains", "a", lambda: _C().where_any("topic", "=", "a")),
+            ("any", ["a", "b"], lambda: _C().where_any("topic", "IN", ["a", "b"])),
+            ("all", ["a", "b"], lambda: _C().where_any("topic", "=", "a") & _C().where_any("topic", "=", "b")),
+            ("text_match", "ab", lambda: _C().where_like("topic", "%ab%")),
+            ("text_match_insensitive", "ab", lambda: _C().where_like("topic", "%ab%")),
+            ("is_empty", None, lambda: _C().where_null("topic")),
         ],
     )
     def test_operators(self, op, value, expected):
-        assert to_engine_filter(_fs(_f("topic", value, op)), _KNOWN) == expected
+        assert _sql(to_engine_filter(_fs(_f("topic", value, op)), _KNOWN)) == _sql(expected())
 
     def test_conditions_and_nesting(self):
         a, b = _f("topic", "food"), _f("year", 2020, ">=")
-        assert to_engine_filter(_fs(a, b), _KNOWN) == {
-            "$and": [{"topic": {"$eq": "food"}}, {"year": {"$gte": 2020}}]
-        }
-        assert to_engine_filter(_fs(a, b, condition="or"), _KNOWN) == {
-            "$or": [{"topic": {"$eq": "food"}}, {"year": {"$gte": 2020}}]
-        }
-        assert to_engine_filter(_fs(a, b, condition="not"), _KNOWN) == {
-            "$not": {"$or": [{"topic": {"$eq": "food"}}, {"year": {"$gte": 2020}}]}
-        }
+        ca, cb = _C().where("topic", "=", "food"), _C().where("year", ">=", 2020)
+        assert _sql(to_engine_filter(_fs(a, b), _KNOWN)) == _sql(ca & cb)
+        assert _sql(to_engine_filter(_fs(a, b, condition="or"), _KNOWN)) == _sql(ca | cb)
+        assert _sql(to_engine_filter(_fs(a, b, condition="not"), _KNOWN)) == _sql(~(ca | cb))
         nested = _fs(_fs(a, b, condition="or"), _f("tags", "ml", "contains"))
-        assert to_engine_filter(nested, _KNOWN) == {
-            "$and": [
-                {"$or": [{"topic": {"$eq": "food"}}, {"year": {"$gte": 2020}}]},
-                {"tags": {"$contains": "ml"}},
-            ]
-        }
+        assert _sql(to_engine_filter(nested, _KNOWN)) == _sql((ca | cb) & _C().where_any("tags", "=", "ml"))
 
     def test_unknown_keys_match_nothing_except_is_empty(self):
-        assert to_engine_filter(_fs(_f("nope", 1)), _KNOWN) == {"position": {"$lt": 0}}
-        assert to_engine_filter(_fs(_f("nope", None, "is_empty")), _KNOWN) == {
-            "position": {"$gte": 0}
-        }
+        assert _sql(to_engine_filter(_fs(_f("nope", 1)), _KNOWN)) == _sql(_C().where("position", "<", 0))
+        assert _sql(to_engine_filter(_fs(_f("nope", None, "is_empty")), _KNOWN)) == _sql(
+            _C().where("position", ">=", 0)
+        )
 
     def test_empty(self):
         assert to_engine_filter(None, _KNOWN) is None

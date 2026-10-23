@@ -24,12 +24,14 @@ class FilteredIndex(_EngineFilteredIndex):
             metadata=[{"len": 9, "tags": ["food"]}, {"len": 10, "tags": ["cars"]}],
             roles=[["public"], ["staff"]],
         )
-        idx.search(query_vector=q, k=5, filter="len >= 6 AND 'food' IN tags")
+        idx.search(query_vector=q, k=5, filter={"len": {">=": 6}, "tags": {"any": ["food"]}})
         idx.search(query_text="engine", query_vector=q, k=5, roles=["staff"])
 
-    ``filter`` is a SQL WHERE fragment (``"len >= 6 AND lang IN ('en','es')"``),
-    a LangChain-style dict (``{"len": {"$gte": 6}}``) or a
-    ``SQLFilter.where(...)`` chain. ``roles=None`` skips the access check.
+    ``filter`` maps metadata fields to operators, all AND'ed --
+    ``{"len": {">=": 6, "<": 20}, "active": {"=": True}, "tags": {"any": ["even", "blue"]}}``.
+    Operators: ``= != > >= < <=``, ``in`` / ``not in`` (list), ``like``,
+    ``null`` (bool), and ``any`` (list) for multi-valued keys; they run as
+    plain SQL. ``roles=None`` skips the access check.
     """
 
     # Load the inner index back as the simlar wrapper it was saved from.

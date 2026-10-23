@@ -52,6 +52,7 @@ from llama_index.core.vector_stores.types import (
     VectorStoreQueryResult,
 )
 from llama_index.core.vector_stores.utils import metadata_dict_to_node, node_to_metadata_dict
+from simlar_engine import MetadataFilter as Chain
 
 from simlar.indexes.filtered_index import FilteredIndex
 from simlar.indexes.helix_index import HelixIndex
@@ -64,18 +65,20 @@ _NAMESPACE_SEP = "__"
 _DEFAULT_PERSIST_FNAME = "vector_store.json"
 
 # Conditions that never / always hold: `position` is a builtin column, >= 0.
-_NEVER: dict = {"position": {"$lt": 0}}
-_ALWAYS: dict = {"position": {"$gte": 0}}
+def _never() -> Chain:
+    return Chain().where("position", "<", 0)
+
+
+def _always() -> Chain:
+    return Chain().where("position", ">=", 0)
 
 _COMPARISONS = {
-    FilterOperator.EQ: "$eq",
-    FilterOperator.NE: "$ne",
-    FilterOperator.GT: "$gt",
-    FilterOperator.GTE: "$gte",
-    FilterOperator.LT: "$lt",
-    FilterOperator.LTE: "$lte",
-    FilterOperator.IN: "$in",
-    FilterOperator.NIN: "$nin",
+    FilterOperator.EQ: "=",
+    FilterOperator.NE: "!=",
+    FilterOperator.GT: ">",
+    FilterOperator.GTE: ">=",
+    FilterOperator.LT: "<",
+    FilterOperator.LTE: "<=",
 }
 
 
@@ -86,31 +89,39 @@ def _as_list(value: Any) -> list:
     return list(value) if isinstance(value, (list, tuple, set)) else [value]
 
 
-def _condition(f: MetadataFilter, known: set[str]) -> dict:
+def _condition(f: MetadataFilter, known: set[str]) -> Chain:
     op = getattr(f, "operator", FilterOperator.EQ)  # legacy ExactMatchFilter has none
     if f.key.lower() not in known:
         # Like PGVectorStore: a key no document has matches nothing (a
         # missing value is NULL), except IS_EMPTY, which it satisfies.
-        return _ALWAYS if op == FilterOperator.IS_EMPTY else _NEVER
+        return _always() if op == FilterOperator.IS_EMPTY else _never()
+    # The operator says which table a key is read from: CONTAINS / ANY /
+    # ALL test a multi-valued key, every other operator a scalar column.
     if op in _COMPARISONS:
-        value = _as_list(f.value) if op in (FilterOperator.IN, FilterOperator.NIN) else f.value
-        return {f.key: {_COMPARISONS[op]: value}}
+        return Chain().where(f.key, _COMPARISONS[op], f.value)
+    if op == FilterOperator.IN:
+        return Chain().where(f.key, "IN", _as_list(f.value))
+    if op == FilterOperator.NIN:
+        return ~Chain().where(f.key, "IN", _as_list(f.value))
     if op == FilterOperator.CONTAINS:
-        return {f.key: {"$contains": f.value}}
+        return Chain().where_any(f.key, "=", f.value)
     if op == FilterOperator.ANY:
-        # On a multi-valued key IN is true if any of the doc's values is listed.
-        return {f.key: {"$in": _as_list(f.value)}}
+        return Chain().where_any(f.key, "IN", _as_list(f.value))
     if op == FilterOperator.ALL:
-        return {"$and": [{f.key: {"$contains": v}} for v in _as_list(f.value)]}
+        return _and([Chain().where_any(f.key, "=", v) for v in _as_list(f.value)])
     if op in (FilterOperator.TEXT_MATCH, FilterOperator.TEXT_MATCH_INSENSITIVE):
-        return {f.key: {"$like": f"%{f.value}%"}}
+        return Chain().where_like(f.key, f"%{f.value}%")
     if op == FilterOperator.IS_EMPTY:
-        return {f.key: {"$exists": False}}
+        return Chain().where_null(f.key)
     raise NotImplementedError(f"Filter operator {op!r} is not supported by SimlarVectorStore.")
 
 
-def to_engine_filter(filters: MetadataFilters | None, known: set[str]) -> dict | None:
-    """Translate LlamaIndex ``MetadataFilters`` into the engine's filter dict.
+def _and(parts: list[Chain]) -> Chain:
+    return parts[0] if len(parts) == 1 else parts[0].and_(*parts[1:])
+
+
+def to_engine_filter(filters: MetadataFilters | None, known: set[str]) -> Chain | None:
+    """Translate LlamaIndex ``MetadataFilters`` into an engine MetadataFilter.
 
     `known` is the lower-cased set of filterable keys present in the store.
     Nested ``MetadataFilters`` recurse; ``NOT`` means none of the sub-filters
@@ -128,17 +139,15 @@ def to_engine_filter(filters: MetadataFilters | None, known: set[str]) -> dict |
         return None
     condition = filters.condition or FilterCondition.AND
     if condition == FilterCondition.NOT:
-        return {"$not": parts[0] if len(parts) == 1 else {"$or": parts}}
-    if len(parts) == 1:
-        return parts[0]
-    return {"$and" if condition == FilterCondition.AND else "$or": parts}
+        return ~(parts[0] if len(parts) == 1 else parts[0].or_(*parts[1:]))
+    if condition == FilterCondition.AND:
+        return _and(parts)
+    return parts[0] if len(parts) == 1 else parts[0].or_(*parts[1:])
 
 
-def _all_of(*filters: dict | None) -> dict | None:
+def _all_of(*filters: Chain | None) -> Chain | None:
     parts = [f for f in filters if f is not None]
-    if not parts:
-        return None
-    return parts[0] if len(parts) == 1 else {"$and": parts}
+    return _and(parts) if parts else None
 
 
 # ── Vector store ──────────────────────────────────────────────────────────────
@@ -290,7 +299,7 @@ class SimlarVectorStore(BasePydanticVectorStore):
 
     def delete(self, ref_doc_id: str, **delete_kwargs: Any) -> None:
         """Delete every node of source document ``ref_doc_id``."""
-        self._delete_ids(self._matching_ids({"ref_doc_id": ref_doc_id}))
+        self._delete_ids(self._matching_ids(self._filter(None, doc_ids=[ref_doc_id])))
 
     def delete_nodes(
         self,
@@ -327,14 +336,18 @@ class SimlarVectorStore(BasePydanticVectorStore):
         filters: MetadataFilters | None,
         node_ids: list[str] | None = None,
         doc_ids: list[str] | None = None,
-    ) -> dict | None:
+    ) -> Chain | None:
+        known = self._known_keys() if filters or doc_ids else set()
+        by_doc = None
+        if doc_ids:
+            by_doc = Chain().where("ref_doc_id", "IN", list(doc_ids)) if "ref_doc_id" in known else _never()
         return _all_of(
-            to_engine_filter(filters, self._known_keys()) if filters else None,
-            {"id": {"$in": list(node_ids)}} if node_ids else None,
-            {"ref_doc_id": {"$in": list(doc_ids)}} if doc_ids else None,
+            to_engine_filter(filters, known) if filters else None,
+            Chain().where("id", "IN", list(node_ids)) if node_ids else None,
+            by_doc,
         )
 
-    def _matching_ids(self, filter: dict | None) -> list[str]:
+    def _matching_ids(self, filter: Chain | None) -> list[str]:
         if not self._docs:
             return []
         ids = self._index.ids
